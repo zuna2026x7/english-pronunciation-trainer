@@ -1,5 +1,5 @@
 import { fetchWord, fetchPhoneticFor, fetchWikimediaAudio, type WordInfo } from './dictionary';
-import { playAudio } from './audio';
+import { playAtRate, SPEEDS } from './audio';
 import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
 import { transcribePCM, warmupModel } from './whisper';
 import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describeOp } from './ipa';
@@ -38,6 +38,11 @@ let recorder: Recorder | null = null;
 let myBlob: Blob | null = null;
 let myPcm: Float32Array | null = null;
 let triedWikimediaFallback = false;
+
+// 连点循环变速：2 秒内连点 -> 下一档（1.0 -> 0.65 -> 0.40 -> 1.0）；间隔超过 2 秒 -> 回到 1.0
+let playSpeedIdx = 0;
+let lastPlayTapAt = 0;
+const CONSECUTIVE_MS = 2000;
 
 // 音频兜底：主音频失败时自动切到另一个源再播一次，只兜底一次，避免循环。
 // 现在 lookup 优先用 Wikimedia，失败则切回词典音频；若 lookup 用的是词典音频，失败则切 Wikimedia。
@@ -81,6 +86,9 @@ async function lookup(word: string) {
     defText.textContent = info.definition ? `${info.pos ? info.pos + ' · ' : ''}${info.definition}` : '';
     // 释义默认隐藏：用户只想看英文 + 听发音，翻译/释义点“释义”才显示
     defText.hidden = true;
+    playSpeedIdx = 0;
+    lastPlayTapAt = 0;
+    playNormal.textContent = '▶ 1.0×';
     defToggleBtn.hidden = !info.definition;
     defToggleBtn.textContent = '释义 ▾';
     wordCard.hidden = false;
@@ -151,9 +159,9 @@ document.getElementById('exampleChips')?.addEventListener('click', (e) => {
   if (w) lookup(w);
 });
 
-async function playWithFallback() {
+async function playWithFallback(rate: number) {
   try {
-    await playAudio(refAudio);
+    await playAtRate(refAudio, rate);
   } catch (e) {
     // 主音频播放失败时，切到另一个源再试一次（若 error 监听未触发）
     if (current && !triedWikimediaFallback) {
@@ -167,7 +175,7 @@ async function playWithFallback() {
         } else {
           throw e;
         }
-        await playAudio(refAudio);
+        await playAtRate(refAudio, rate);
         lookupStatus.textContent = '';
         return;
       } catch {
@@ -179,7 +187,16 @@ async function playWithFallback() {
 }
 
 playNormal.addEventListener('click', async () => {
-  try { await playWithFallback(); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
+  const now = Date.now();
+  if (now - lastPlayTapAt > CONSECUTIVE_MS) {
+    playSpeedIdx = 0;
+  } else {
+    playSpeedIdx = (playSpeedIdx + 1) % SPEEDS.length;
+  }
+  lastPlayTapAt = now;
+  const rate = SPEEDS[playSpeedIdx];
+  playNormal.textContent = `▶ ${rate}×`;
+  try { await playWithFallback(rate); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 
 // 按住录音：手指按住开始，松开停止并自动打分（像微信按住说话）。
