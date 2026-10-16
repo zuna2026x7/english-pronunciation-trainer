@@ -1,1 +1,19 @@
-{"dependencies":{"@xenova/transformers":"^2.17.2"},"description":"English pronunciation trainer: play correct pronunciation at 3 speeds, record and score your reading with IPA phoneme feedback. No Google packages.","devDependencies":{"typescript":"^5.6.3","vite":"^5.4.11"},"name":"english-pronunciation-trainer","private":true,"scripts":{"build":"tsc -b && vite build","dev":"vite","preview":"vite preview"},"type":"module","version":"1.0.0"}
+{
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.0"
+  },
+  "description": "English pronunciation trainer: play correct pronunciation at 3 speeds, record and score your reading with IPA phoneme feedback. No Google packages.",
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "name": "english-pronunciation-trainer",
+  "private": true,
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "dev": "vite",
+    "preview": "vite preview"
+  },
+  "type": "module",
+  "version": "1.0.0"
+}

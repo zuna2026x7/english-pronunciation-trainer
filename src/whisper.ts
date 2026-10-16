@@ -1,14 +1,17 @@
-// 本地语音识别：Xenova/whisper-tiny.en via @xenova/transformers（ONNX，浏览器本地跑）。
+// 本地语音识别：Xenova/whisper-tiny.en via @huggingface/transformers v3（ONNX，浏览器本地跑）。
 // 明确不用 Web Speech API（Chrome 里走 Google）、不用 Google Cloud Speech。
 
 let pipePromise: Promise<any> | null = null;
+
+// 失败必须清掉缓存的 rejected promise，否则之后每次评分都会直接复用同一次失败，
+// 表现为“老是识别不出来”，直到换词触发 warmup 才有机会重试。
 
 export type ProgressCb = (msg: string) => void;
 
 function getPipeline(onProgress?: ProgressCb) {
   if (!pipePromise) {
     pipePromise = (async () => {
-      const mod: any = await import('@xenova/transformers');
+      const mod: any = await import('@huggingface/transformers');
       const { pipeline, env } = mod;
       // 自有服务器：模型走同源 /models/（speak 根路径部署）或 /pronunciation/models/（旧子路径部署），避免直连 huggingface.co 被挡。
       // GitHub Pages 等外站：仍走默认 Hugging Face。
@@ -47,7 +50,13 @@ function getPipeline(onProgress?: ProgressCb) {
 }
 
 export async function transcribePCM(pcm: Float32Array, onProgress?: ProgressCb): Promise<string> {
-  const pipe = await getPipeline(onProgress);
+  let pipe: any;
+  try {
+    pipe = await getPipeline(onProgress);
+  } catch (e) {
+    pipePromise = null; // 模型加载失败时清缓存，下次评分重新拉模型，而不是一直复用失败
+    throw e;
+  }
   if (onProgress) onProgress('识别中');
   const out = await pipe(pcm, {
     chunk_length_s: 30,

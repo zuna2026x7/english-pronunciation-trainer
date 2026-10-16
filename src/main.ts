@@ -253,7 +253,9 @@ const endHold = (e: Event) => {
   void stopHoldRecordAndScore();
 };
 recBtn.addEventListener('pointerup', endHold);
-recBtn.addEventListener('pointerleave', endHold);
+// 注意：不要用 pointerleave 结束录音。手指按住时稍微滑出按钮就会触发 pointerleave，
+// 录音被提前截断成很短的一段，Whisper 对过短音频经常返回空，看起来就是“老是识别不出来”。
+// 只用 pointerup / pointercancel 结束；触摸下 pointerup 即使手指滑出也会触发。
 recBtn.addEventListener('pointercancel', endHold);
 recBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -358,7 +360,9 @@ async function runScore(): Promise<void> {
     resultEl.hidden = false;
     recStatus.textContent = '';
   } catch (e) {
-    recStatus.textContent = '评分失败，重试。';
+    // 之前这里吞掉了具体原因，统一只显示“评分失败，重试。”，
+    // 用户无法区分是“没录到声音 / 录音太短 / 模型没加载上”。现在把具体原因显示出来。
+    recStatus.textContent = e instanceof Error && e.message ? e.message : '评分失败，重试。';
   } finally {
   }
 }
