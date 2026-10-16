@@ -88,7 +88,6 @@ async function lookup(word: string) {
     defText.hidden = true;
     playSpeedIdx = 0;
     lastPlayTapAt = 0;
-    playNormal.textContent = '▶ 1.0×';
     defToggleBtn.hidden = !info.definition;
     defToggleBtn.textContent = '释义 ▾';
     wordCard.hidden = false;
@@ -195,7 +194,6 @@ playNormal.addEventListener('click', async () => {
   }
   lastPlayTapAt = now;
   const rate = SPEEDS[playSpeedIdx];
-  playNormal.textContent = `▶ ${rate}×`;
   try { await playWithFallback(rate); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 
