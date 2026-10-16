@@ -205,7 +205,7 @@ async function startHoldRecord(): Promise<boolean> {
   startPromise = recorder.start();
   try {
     await startPromise;
-    recBtn.textContent = '松开打分';
+    recBtn.classList.add('recording');
     recStatus.textContent = '录音中';
     resultEl.hidden = true;
     return true;
@@ -224,7 +224,7 @@ async function stopHoldRecordAndScore(): Promise<void> {
     try { await startPromise; } catch { return; }
   }
   if (!recorder.isRecording) return;
-  recBtn.textContent = '按住说话';
+  recBtn.classList.remove('recording');
   try {
     const blob = await recorder.stop();
     myBlob = blob;
@@ -238,7 +238,7 @@ async function stopHoldRecordAndScore(): Promise<void> {
   } catch (e) {
     recStatus.textContent = '停止失败，重试。';
   } finally {
-    recBtn.textContent = '按住说话';
+    recBtn.classList.remove('recording');
   }
 }
 
