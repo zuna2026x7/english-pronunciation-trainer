@@ -27,19 +27,19 @@ function getPipeline(onProgress?: ProgressCb) {
       // 允许从远程拉模型，禁用本地模型路径（浏览器无本地文件）
       env.allowLocalModels = false;
       env.allowRemoteModels = true;
-      if (onProgress) onProgress('正在加载识别模型（首次约 40MB，之后缓存）…');
+      if (onProgress) onProgress('加载模型…');
       const pipe = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
         quantized: true,
         progress_callback: (p: any) => {
           if (!onProgress) return;
           if (p?.status === 'progress' && typeof p?.progress === 'number') {
-            onProgress(`正在加载识别模型… ${Math.round(p.progress)}%（${p.file ?? ''}）`);
+            onProgress(`加载模型… ${Math.round(p.progress)}%`);
           } else if (p?.status) {
-            onProgress(`模型：${p.status} ${p.file ?? ''}`);
+            onProgress('');
           }
         },
       });
-      if (onProgress) onProgress('识别模型已就绪');
+      if (onProgress) onProgress('模型已就绪');
       return pipe;
     })();
   }
@@ -48,7 +48,7 @@ function getPipeline(onProgress?: ProgressCb) {
 
 export async function transcribePCM(pcm: Float32Array, onProgress?: ProgressCb): Promise<string> {
   const pipe = await getPipeline(onProgress);
-  if (onProgress) onProgress('正在识别你的录音…');
+  if (onProgress) onProgress('识别中…');
   const out = await pipe(pcm, {
     chunk_length_s: 30,
     stride_length_s: 5,

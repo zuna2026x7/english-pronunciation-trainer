@@ -50,17 +50,17 @@ refAudio.addEventListener('error', async () => {
   const isWm = refAudio.src.includes('wikimedia') || refAudio.src.includes('upload.wikimedia.org');
   try {
     if (isWm && current.audio) {
-      lookupStatus.textContent = 'Wikimedia 音频失败，正在切回词典音频…';
+      lookupStatus.textContent = '切换音频源…';
       refAudio.src = current.audio;
-      lookupStatus.textContent = '已切回词典音频，请再点播放。';
+      lookupStatus.textContent = '请再点播放。';
     } else if (!isWm && current.audioSourceUrl) {
-      lookupStatus.textContent = '词典音频失败，正在尝试 Wikimedia 兜底音频…';
+      lookupStatus.textContent = '切换音频源…';
       const fb = await fetchWikimediaAudio(current.audioSourceUrl);
       refAudio.src = fb;
-      lookupStatus.textContent = '已切换到 Wikimedia 兜底音频，请再点播放。';
+      lookupStatus.textContent = '请再点播放。';
     }
   } catch (e) {
-    lookupStatus.textContent = `两个音频源都失败了：${(e as Error).message}（词典音标仍可用于跟读评分）`;
+    lookupStatus.textContent = '音频失败，稍后重试。';
   }
 });
 
@@ -80,8 +80,8 @@ function saveHistory(items: HistItem[]) {
 function renderHistory() {
   const items = loadHistory();
   historyList.innerHTML = items.length
-    ? items.map((h) => `<li><span><strong>${h.word}</strong> · 识别为 ${h.recognized || '—'}</span><span>${h.score}分 · ${h.time}</span></li>`).join('')
-    : '<li>暂无记录，练一次就会出现在这里。</li>';
+    ? items.map((h) => `<li><span><strong>${h.word}</strong> · ${h.recognized || '—'}</span><span>${h.score}分</span></li>`).join('')
+    : '<li>暂无记录。</li>';
 }
 
 function setPlayEnabled(enabled: boolean) {
@@ -89,7 +89,7 @@ function setPlayEnabled(enabled: boolean) {
 }
 
 async function lookup(word: string) {
-  lookupStatus.textContent = `正在查 “${word}”…`;
+  lookupStatus.textContent = '…';
   lookupBtn.setAttribute('disabled', 'true');
   try {
     const info = await fetchWord(word);
@@ -97,7 +97,7 @@ async function lookup(word: string) {
     wordTitle.textContent = info.word;
     posBadge.textContent = info.pos || '';
     posBadge.style.display = info.pos ? '' : 'none';
-    ipaText.textContent = info.phonetic ? `${info.phonetic}  ${info.phonetic.includes('/') ? '' : ''}` : '（暂无音标）';
+    ipaText.textContent = info.phonetic || '—';
     defText.textContent = info.definition ? `${info.pos ? info.pos + ' · ' : ''}${info.definition}` : '';
     wordCard.hidden = false;
     practiceCard.hidden = false;
@@ -131,23 +131,23 @@ async function lookup(word: string) {
         refAudio.src = audioSrc;
         setPlayEnabled(true);
         lookupStatus.textContent = wmUsed
-          ? '已加载真人发音（Wikimedia），可以点三档播放试听。'
-          : '已加载真人发音，可以点三档播放试听。';
+          ? '已加载。'
+          : '已加载。';
       } else {
         refAudio.removeAttribute('src');
         setPlayEnabled(false);
-        lookupStatus.textContent = '已找到词条，但该词暂无真人发音音频（仍可录音评分）。';
+        lookupStatus.textContent = '无音频，可录音评分。';
       }
     } else {
       refAudio.removeAttribute('src');
       setPlayEnabled(false);
-      lookupStatus.textContent = '已找到词条，但该词暂无真人发音音频（仍可录音评分）。';
+      lookupStatus.textContent = '无音频，可录音评分。';
     }
     // 后台预热识别模型，评分时更快
     warmupModel((m) => (modelStatus.textContent = m));
     wordInput.value = info.word;
   } catch (e) {
-    lookupStatus.textContent = `查词失败：${(e as Error).message}`;
+    lookupStatus.textContent = '没找到，检查拼写。';
   } finally {
     lookupBtn.removeAttribute('disabled');
   }
@@ -180,7 +180,7 @@ async function playWithFallback(rate: number) {
           throw e;
         }
         await playAtRate(refAudio, rate);
-        lookupStatus.textContent = '已切换到备用音频源。';
+        lookupStatus.textContent = '';
         return;
       } catch {
         // 落到下方统一报错
@@ -191,18 +191,18 @@ async function playWithFallback(rate: number) {
 }
 
 playNormal.addEventListener('click', async () => {
-  try { await playWithFallback(RATES.normal); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}（可试 Wikimedia 兜底，或稍后重试）`; }
+  try { await playWithFallback(RATES.normal); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 playSlow.addEventListener('click', async () => {
-  try { await playWithFallback(RATES.slow); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}（可试 Wikimedia 兜底，或稍后重试）`; }
+  try { await playWithFallback(RATES.slow); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 playVerySlow.addEventListener('click', async () => {
-  try { await playWithFallback(RATES.verySlow); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}（可试 Wikimedia 兜底，或稍后重试）`; }
+  try { await playWithFallback(RATES.verySlow); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 
 recBtn.addEventListener('click', async () => {
   if (recorder?.isRecording) {
-    recBtn.textContent = '● 正在停止…';
+    recBtn.textContent = '…';
     recBtn.setAttribute('disabled', 'true');
     try {
       const blob = await recorder.stop();
@@ -213,32 +213,32 @@ recBtn.addEventListener('click', async () => {
       myAudio.hidden = false;
       playMineBtn.removeAttribute('disabled');
       scoreBtn.removeAttribute('disabled');
-      recStatus.textContent = '录音已保存，可以先回放，再点“打分 & 找错误”。';
+      recStatus.textContent = '已录好。';
     } catch (e) {
-      recStatus.textContent = `停止录音失败：${(e as Error).message}`;
+      recStatus.textContent = '停止失败，重试。';
     } finally {
-      recBtn.textContent = '● 开始录音';
+      recBtn.textContent = '● 录音';
       recBtn.removeAttribute('disabled');
     }
     return;
   }
   if (!current) {
-    recStatus.textContent = '请先查一个单词。';
+    recStatus.textContent = '先查一个词。';
     return;
   }
   recorder = new Recorder();
   try {
     await recorder.start();
-    recBtn.textContent = '■ 停止录音';
-    recStatus.textContent = `正在录音：请朗读 “${current.word}”…`;
+    recBtn.textContent = '■ 停止';
+    recStatus.textContent = '录音中…';
     resultEl.hidden = true;
   } catch (e) {
-    recStatus.textContent = `无法开始录音：${(e as Error).message}（请允许麦克风权限，并用 https 或 localhost 打开页面）`;
+    recStatus.textContent = '无法录音，请允许麦克风权限。';
   }
 });
 
 playMineBtn.addEventListener('click', async () => {
-  try { await myAudio.play(); } catch (e) { recStatus.textContent = `播放我的录音失败：${(e as Error).message}`; }
+  try { await myAudio.play(); } catch (e) { recStatus.textContent = '回放失败。'; }
 });
 
 function letterDistance(a: string, b: string): number {
@@ -253,7 +253,7 @@ function letterDistance(a: string, b: string): number {
 scoreBtn.addEventListener('click', async () => {
   if (!current || !myBlob) return;
   scoreBtn.setAttribute('disabled', 'true');
-  recStatus.textContent = '正在处理录音…';
+  recStatus.textContent = '评分中…';
   try {
     const pcm = myPcm ?? (await blobToPCM16k(myBlob));
     myPcm = pcm;
@@ -262,7 +262,7 @@ scoreBtn.addEventListener('click', async () => {
     const text = await transcribePCM(pcm, (m) => (modelStatus.textContent = m));
     const recognizedFull = text || '';
     const recognizedWord = recognizedFull.split(/\s+/)[0] || '';
-    recognizedText.textContent = recognizedFull || '（未识别出内容）';
+    recognizedText.textContent = recognizedFull || '—';
     const target = current.word.toLowerCase();
     const wordMatch = recognizedWord === target;
 
@@ -274,7 +274,7 @@ scoreBtn.addEventListener('click', async () => {
       score = 0;
       fallback = true;
       fallbackNote.hidden = false;
-      fallbackNote.textContent = '未识别出单词，按 0 分计，请在安静环境下再试一次。';
+      fallbackNote.textContent = '未识别出内容，0 分。';
       expectedPhonemes.innerHTML = '';
       userPhonemes.innerHTML = '';
       errorList.innerHTML = '<li>未识别出内容</li>';
@@ -284,7 +284,7 @@ scoreBtn.addEventListener('click', async () => {
       score = Math.max(0, Math.round(100 * (1 - d / Math.max(target.length, recognizedWord.length, 1))));
       fallback = true;
       fallbackNote.hidden = false;
-      fallbackNote.textContent = '目标词暂无标准音标，本次按拼写相似度兜底评分（非音素级）。';
+      fallbackNote.textContent = '无音标，按拼写评分。';
       expectedPhonemes.innerHTML = `<span>${current.word}</span>`;
       userPhonemes.innerHTML = `<span>${recognizedWord}</span>`;
       errorList.innerHTML = wordMatch ? '<li>整词识别一致</li>' : `<li>识别为 “${recognizedWord}”，与目标 “${target}” 拼写有差异</li>`;
@@ -296,7 +296,7 @@ scoreBtn.addEventListener('click', async () => {
         score = Math.max(0, Math.round(100 * (1 - d / Math.max(target.length, recognizedWord.length, 1))));
         fallback = true;
         fallbackNote.hidden = false;
-        fallbackNote.textContent = `识别词 “${recognizedWord}” 暂无音标，本次按拼写相似度兜底评分（非音素级）。`;
+        fallbackNote.textContent = '无音标，按拼写评分。';
         expectedPhonemes.innerHTML = expectedTokens.map((t) => `<span>${t}</span>`).join('');
         userPhonemes.innerHTML = `<span>${recognizedWord}</span>`;
         errorList.innerHTML = `<li>识别为 “${recognizedWord}”</li>`;
@@ -330,20 +330,20 @@ scoreBtn.addEventListener('click', async () => {
         }
         expectedPhonemes.innerHTML = expHtml.join('');
         userPhonemes.innerHTML = userHtml.join('');
-        errorList.innerHTML = errs.length ? errs.map((e) => `<li>${e}</li>`).join('') : '<li>全部音素正确 🎉</li>';
+        errorList.innerHTML = errs.length ? errs.map((e) => `<li>${e}</li>`).join('') : '<li>全部正确 🎉</li>';
       }
     }
 
     scoreNum.textContent = String(score);
     gradeText.textContent = gradeForScore(score);
     resultEl.hidden = false;
-    recStatus.textContent = fallback ? '已按兜底方式评分（见提示）。' : '评分完成，请看音标对比与错误列表。';
+    recStatus.textContent = '';
     const hist = loadHistory();
     hist.unshift({ word: current.word, score, recognized: recognizedWord, time: new Date().toLocaleString() });
     saveHistory(hist);
     renderHistory();
   } catch (e) {
-    recStatus.textContent = `评分失败：${(e as Error).message}`;
+    recStatus.textContent = '评分失败，重试。';
   } finally {
     scoreBtn.removeAttribute('disabled');
   }
