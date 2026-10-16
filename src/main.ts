@@ -190,42 +190,75 @@ playVerySlow.addEventListener('click', async () => {
   try { await playWithFallback(RATES.verySlow); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 
-recBtn.addEventListener('click', async () => {
-  if (recorder?.isRecording) {
-    recBtn.textContent = '…';
-    recBtn.setAttribute('disabled', 'true');
-    try {
-      const blob = await recorder.stop();
-      myBlob = blob;
-      myPcm = null;
-      const url = URL.createObjectURL(blob);
-      myAudio.src = url;
-      myAudio.hidden = false;
-      playMineBtn.removeAttribute('disabled');
-      scoreBtn.removeAttribute('disabled');
-      recStatus.textContent = '已录好。';
-    } catch (e) {
-      recStatus.textContent = '停止失败，重试。';
-    } finally {
-      recBtn.textContent = '● 录音';
-      recBtn.removeAttribute('disabled');
-    }
-    return;
-  }
+// 按住录音：手指按住开始，松开停止并自动打分（像微信按住说话）。
+// 用 Pointer Events 同时覆盖鼠标与触摸；长按不触发右键菜单/选中。
+let isHolding = false;
+let startPromise: Promise<void> | null = null;
+
+async function startHoldRecord(): Promise<boolean> {
   if (!current) {
     recStatus.textContent = '先查一个词。';
-    return;
+    return false;
   }
+  if (recorder?.isRecording) return true;
   recorder = new Recorder();
+  startPromise = recorder.start();
   try {
-    await recorder.start();
-    recBtn.textContent = '■ 停止';
+    await startPromise;
+    recBtn.textContent = '松开打分';
     recStatus.textContent = '录音中…';
     resultEl.hidden = true;
+    return true;
   } catch (e) {
     recStatus.textContent = '无法录音，请允许麦克风权限。';
+    return false;
+  } finally {
+    startPromise = null;
   }
+}
+
+async function stopHoldRecordAndScore(): Promise<void> {
+  if (!recorder) return;
+  // 若松开时 start 还在等麦克风权限，先等它完成再停，避免 stop 时 rec 为空
+  if (startPromise) {
+    try { await startPromise; } catch { return; }
+  }
+  if (!recorder.isRecording) return;
+  recBtn.textContent = '…';
+  try {
+    const blob = await recorder.stop();
+    myBlob = blob;
+    myPcm = null;
+    const url = URL.createObjectURL(blob);
+    myAudio.src = url;
+    myAudio.hidden = false;
+    playMineBtn.removeAttribute('disabled');
+    scoreBtn.removeAttribute('disabled');
+    recStatus.textContent = '评分中…';
+    await runScore();
+  } catch (e) {
+    recStatus.textContent = '停止失败，重试。';
+  } finally {
+    recBtn.textContent = '按住说话';
+  }
+}
+
+recBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (isHolding) return;
+  isHolding = true;
+  void startHoldRecord();
 });
+const endHold = (e: Event) => {
+  e.preventDefault();
+  if (!isHolding) return;
+  isHolding = false;
+  void stopHoldRecordAndScore();
+};
+recBtn.addEventListener('pointerup', endHold);
+recBtn.addEventListener('pointerleave', endHold);
+recBtn.addEventListener('pointercancel', endHold);
+recBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
 playMineBtn.addEventListener('click', async () => {
   try { await myAudio.play(); } catch (e) { recStatus.textContent = '回放失败。'; }
@@ -240,7 +273,7 @@ function letterDistance(a: string, b: string): number {
   return dp[n][m];
 }
 
-scoreBtn.addEventListener('click', async () => {
+async function runScore(): Promise<void> {
   if (!current || !myBlob) return;
   scoreBtn.setAttribute('disabled', 'true');
   recStatus.textContent = '评分中…';
@@ -333,7 +366,9 @@ scoreBtn.addEventListener('click', async () => {
   } finally {
     scoreBtn.removeAttribute('disabled');
   }
-});
+}
+
+scoreBtn.addEventListener('click', runScore);
 
 setPlayEnabled(false);
 // 默认加载一个词，打开即用
