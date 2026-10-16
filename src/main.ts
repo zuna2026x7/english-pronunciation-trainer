@@ -95,7 +95,7 @@ async function lookup(word: string) {
     recStatus.textContent = '';
     myBlob = null;
     myPcm = null;
-    playMineBtn.setAttribute('disabled', 'true');
+    playMineBtn.hidden = true;
     myAudio.hidden = true;
     if (info.audio || info.audioSourceUrl) {
       // 音频优先走 Wikimedia：词典 /media/*.mp3 目前 522 且要等约 20 秒才失败，
@@ -230,7 +230,7 @@ async function stopHoldRecordAndScore(): Promise<void> {
     const url = URL.createObjectURL(blob);
     myAudio.src = url;
     myAudio.hidden = false;
-    playMineBtn.removeAttribute('disabled');
+    playMineBtn.hidden = false;
     recStatus.textContent = '评分中';
     await runScore();
   } catch (e) {
