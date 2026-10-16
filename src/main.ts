@@ -150,11 +150,6 @@ defToggleBtn.addEventListener('click', () => {
   defText.hidden = !defText.hidden;
   defToggleBtn.textContent = defText.hidden ? '释义 ▾' : '释义 ▴';
 });
-document.getElementById('exampleChips')?.addEventListener('click', (e) => {
-  const t = e.target as HTMLElement;
-  const w = t.dataset?.word;
-  if (w) lookup(w);
-});
 
 async function playWithFallback(rate: number) {
   try {
