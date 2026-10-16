@@ -1,5 +1,33 @@
-// Free Dictionary API：https://api.dictionaryapi.dev —— 免费、无需 key、非 Google。
-// 返回 IPA 音标 + 真人发音 mp3 + 词性释义。
+// 自有服务器反代判断：
+// - GitHub Pages / 其他外站：直接走 https://api.dictionaryapi.dev
+// - 自有服务器（IP 或 *.benext.uk / *.chuangkai.cloud，或 /pronunciation/ 路径）：
+//   走同源反代 /pronunciation/api/dict/ -> https://api.dictionaryapi.dev/
+//   这样在 GitHub 被挡的区域，用户只访问自有域名即可用词典 + 音频。
+export function isSelfHosted(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  return (
+    h === '198.200.49.120' ||
+    /\.benext\.uk$/.test(h) ||
+    /\.chuangkai\.cloud$/.test(h) ||
+    window.location.pathname.startsWith('/pronunciation/')
+  );
+}
+
+function dictBase(): string {
+  return isSelfHosted() ? '/pronunciation/api/dict' : 'https://api.dictionaryapi.dev';
+}
+
+/** 把词典返回的音频 URL 转成同源反代 URL（仅自有服务器时），避免浏览器直连被挡的源站。 */
+function rewriteAudioUrl(url: string): string {
+  if (!url) return url;
+  if (!isSelfHosted()) return url;
+  // 词典音频形如 https://api.dictionaryapi.dev/media/pronunciations/en/hello-uk.mp3
+  // 反代：/pronunciation/api/dict/media/... -> https://api.dictionaryapi.dev/media/...
+  const m = url.match(/^https:\/\/api\.dictionaryapi\.dev\/(.+)$/);
+  if (m) return `/pronunciation/api/dict/${m[1]}`;
+  return url;
+}
 
 export interface WordInfo {
   word: string;
@@ -14,7 +42,7 @@ export async function fetchWord(raw: string): Promise<WordInfo> {
   const word = raw.trim().toLowerCase();
   if (!word) throw new Error('请输入单词');
   if (!/^[a-z][a-z' -]*$/i.test(word)) throw new Error('请输入英文单词（仅字母、连字符、撇号）');
-  const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+  const res = await fetch(`${dictBase()}/api/v2/entries/en/${encodeURIComponent(word)}`);
   if (res.status === 404) throw new Error(`词典里没找到 “${word}”，请检查拼写`);
   if (!res.ok) throw new Error(`词典请求失败（HTTP ${res.status}），请稍后重试`);
   const data = await res.json();
@@ -27,7 +55,7 @@ export async function fetchWord(raw: string): Promise<WordInfo> {
   const withText = phonetics.find((p) => p.text);
   const chosen = withBoth ?? withAudio ?? withText;
   const phonetic = entry.phonetic ?? chosen?.text ?? '';
-  const audio = withAudio?.audio ?? chosen?.audio ?? '';
+  const audio = rewriteAudioUrl(withAudio?.audio ?? chosen?.audio ?? '');
   const meaning = entry.meanings?.[0];
   const def = meaning?.definitions?.[0]?.definition ?? '';
   return {
