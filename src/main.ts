@@ -34,8 +34,6 @@ const expectedPhonemes = $('expectedPhonemes');
 const userPhonemes = $('userPhonemes');
 const errorList = $('errorList');
 const fallbackNote = $('fallbackNote');
-const historyList = $('historyList');
-const clearHistoryBtn = $('clearHistoryBtn');
 
 let current: WordInfo | null = null;
 let recorder: Recorder | null = null;
@@ -65,25 +63,8 @@ refAudio.addEventListener('error', async () => {
   }
 });
 
-type HistItem = { word: string; score: number; recognized: string; time: string };
-const HIST_KEY = 'ept_history_v1';
-
-function loadHistory(): HistItem[] {
-  try {
-    return JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
-  } catch {
-    return [];
-  }
-}
-function saveHistory(items: HistItem[]) {
-  localStorage.setItem(HIST_KEY, JSON.stringify(items.slice(0, 30)));
-}
-function renderHistory() {
-  const items = loadHistory();
-  historyList.innerHTML = items.length
-    ? items.map((h) => `<li><span><strong>${h.word}</strong> · ${h.recognized || '—'}</span><span>${h.score}分</span></li>`).join('')
-    : '<li>暂无记录。</li>';
-}
+// 不保存记录：用户不要记录功能。启动时清掉旧版本存过的记录。
+try { localStorage.removeItem('ept_history_v1'); } catch { /* ignore */ }
 
 function setPlayEnabled(enabled: boolean) {
   [playNormal, playSlow, playVerySlow].forEach((b) => ((b as HTMLButtonElement).disabled = !enabled));
@@ -347,10 +328,6 @@ scoreBtn.addEventListener('click', async () => {
     gradeText.textContent = gradeForScore(score);
     resultEl.hidden = false;
     recStatus.textContent = '';
-    const hist = loadHistory();
-    hist.unshift({ word: current.word, score, recognized: recognizedWord, time: new Date().toLocaleString() });
-    saveHistory(hist);
-    renderHistory();
   } catch (e) {
     recStatus.textContent = '评分失败，重试。';
   } finally {
@@ -358,12 +335,6 @@ scoreBtn.addEventListener('click', async () => {
   }
 });
 
-clearHistoryBtn.addEventListener('click', () => {
-  localStorage.removeItem(HIST_KEY);
-  renderHistory();
-});
-
-renderHistory();
 setPlayEnabled(false);
 // 默认加载一个词，打开即用
 lookup('hello');

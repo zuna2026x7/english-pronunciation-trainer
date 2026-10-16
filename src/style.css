@@ -41,8 +41,4 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Pi
 .phonemes span.bad{background:#fee2e2}
 .phonemes span.extra{background:#e2e8f0;color:#475569}
 .errors{margin:12px 0 0;padding-left:18px;color:#7f1d1d;font-size:14px;line-height:1.7}
-.history{list-style:none;padding:0;margin:10px 0}
-.history li{padding:8px 0;border-bottom:1px solid #f8fafc;display:flex;justify-content:space-between;gap:10px;font-size:14px}
-.history-card summary{cursor:pointer;font-weight:600;list-style:none}
-.history-card summary::-webkit-details-marker{display:none}
 @media(max-width:560px){.phon-row{grid-template-columns:1fr}.word-head h2{font-size:30px}}
