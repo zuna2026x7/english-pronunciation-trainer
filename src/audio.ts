@@ -1,27 +1,9 @@
-// 标准读音三档播放：变速不变调。
-// 用 <audio> + preservesPitch（浏览器内置 WSOLA），避免 Web Audio playbackRate 变调。
+// 标准读音播放：只播正常速度，越简单越好。
+// 关键：先 pause 再重置，否则连点时浏览器会把速率叠加，越点越慢。
 
-export function setPreservesPitch(audio: HTMLAudioElement): void {
-  const a = audio as HTMLAudioElement & {
-    preservesPitch?: boolean;
-    mozPreservesPitch?: boolean;
-    webkitPreservesPitch?: boolean;
-  };
-  a.preservesPitch = true;
-  a.mozPreservesPitch = true;
-  a.webkitPreservesPitch = true;
-}
-
-export async function playAtRate(audio: HTMLAudioElement, rate: number): Promise<void> {
-  setPreservesPitch(audio);
-  audio.playbackRate = rate;
-  // 从头播，保证三档对比一致
+export async function playAudio(audio: HTMLAudioElement): Promise<void> {
+  audio.pause();
   audio.currentTime = 0;
+  audio.playbackRate = 1;
   await audio.play();
 }
-
-export const RATES = {
-  normal: 1.0,
-  slow: 0.65,
-  verySlow: 0.4,
-} as const;

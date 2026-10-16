@@ -1,5 +1,5 @@
 import { fetchWord, fetchPhoneticFor, fetchWikimediaAudio, type WordInfo } from './dictionary';
-import { playAtRate, RATES } from './audio';
+import { playAudio } from './audio';
 import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
 import { transcribePCM, warmupModel } from './whisper';
 import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describeOp } from './ipa';
@@ -17,8 +17,6 @@ const defText = $('defText');
 const defToggleBtn = $('defToggleBtn');
 const refAudio = $('refAudio') as HTMLAudioElement;
 const playNormal = $('playNormal');
-const playSlow = $('playSlow');
-const playVerySlow = $('playVerySlow');
 const practiceCard = $('practiceCard');
 const recBtn = $('recBtn');
 const playMineBtn = $('playMineBtn');
@@ -67,7 +65,7 @@ refAudio.addEventListener('error', async () => {
 try { localStorage.removeItem('ept_history_v1'); } catch { /* ignore */ }
 
 function setPlayEnabled(enabled: boolean) {
-  [playNormal, playSlow, playVerySlow].forEach((b) => ((b as HTMLButtonElement).disabled = !enabled));
+  (playNormal as HTMLButtonElement).disabled = !enabled;
 }
 
 async function lookup(word: string) {
@@ -153,9 +151,9 @@ document.getElementById('exampleChips')?.addEventListener('click', (e) => {
   if (w) lookup(w);
 });
 
-async function playWithFallback(rate: number) {
+async function playWithFallback() {
   try {
-    await playAtRate(refAudio, rate);
+    await playAudio(refAudio);
   } catch (e) {
     // 主音频播放失败时，切到另一个源再试一次（若 error 监听未触发）
     if (current && !triedWikimediaFallback) {
@@ -169,7 +167,7 @@ async function playWithFallback(rate: number) {
         } else {
           throw e;
         }
-        await playAtRate(refAudio, rate);
+        await playAudio(refAudio);
         lookupStatus.textContent = '';
         return;
       } catch {
@@ -181,13 +179,7 @@ async function playWithFallback(rate: number) {
 }
 
 playNormal.addEventListener('click', async () => {
-  try { await playWithFallback(RATES.normal); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
-});
-playSlow.addEventListener('click', async () => {
-  try { await playWithFallback(RATES.slow); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
-});
-playVerySlow.addEventListener('click', async () => {
-  try { await playWithFallback(RATES.verySlow); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
+  try { await playWithFallback(); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 
 // 按住录音：手指按住开始，松开停止并自动打分（像微信按住说话）。
