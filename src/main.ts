@@ -1,4 +1,4 @@
-import { fetchWord, fetchPhoneticFor, type WordInfo } from './dictionary';
+import { fetchWord, fetchPhoneticFor, fetchWikimediaAudio, type WordInfo } from './dictionary';
 import { playAtRate, RATES } from './audio';
 import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
 import { transcribePCM, warmupModel } from './whisper';
@@ -40,6 +40,22 @@ let current: WordInfo | null = null;
 let recorder: Recorder | null = null;
 let myBlob: Blob | null = null;
 let myPcm: Float32Array | null = null;
+let triedWikimediaFallback = false;
+
+// 音频兜底：dictionaryapi /media/ 曾 522/超时，自动切 Wikimedia Commons 直链（ogg）再播一次。
+// 只兜底一次，避免循环。refAudio 的 error 事件由 playAtRate 的 play() 失败触发时也会走到这里。
+refAudio.addEventListener('error', async () => {
+  if (!current?.audioSourceUrl || triedWikimediaFallback) return;
+  triedWikimediaFallback = true;
+  try {
+    lookupStatus.textContent = '主音频源暂时不可用，正在尝试 Wikimedia 兜底音频…';
+    const fb = await fetchWikimediaAudio(current.audioSourceUrl);
+    refAudio.src = fb;
+    lookupStatus.textContent = '已切换到 Wikimedia 兜底音频，请再点播放。';
+  } catch (e) {
+    lookupStatus.textContent = `主音频与 Wikimedia 兜底都失败了：${(e as Error).message}（词典音标仍可用于跟读评分）`;
+  }
+});
 
 type HistItem = { word: string; score: number; recognized: string; time: string };
 const HIST_KEY = 'ept_history_v1';
@@ -86,6 +102,7 @@ async function lookup(word: string) {
     scoreBtn.setAttribute('disabled', 'true');
     myAudio.hidden = true;
     if (info.audio) {
+      triedWikimediaFallback = false;
       refAudio.src = info.audio;
       setPlayEnabled(true);
       lookupStatus.textContent = '已加载真人发音，可以点三档播放试听。';
@@ -114,14 +131,35 @@ document.getElementById('exampleChips')?.addEventListener('click', (e) => {
   if (w) lookup(w);
 });
 
+async function playWithFallback(rate: number) {
+  try {
+    await playAtRate(refAudio, rate);
+  } catch (e) {
+    // 主音频加载失败时，error 监听已尝试切 Wikimedia；这里再兜底一次（若 error 未触发）
+    if (current?.audioSourceUrl && !triedWikimediaFallback) {
+      triedWikimediaFallback = true;
+      try {
+        const fb = await fetchWikimediaAudio(current.audioSourceUrl);
+        refAudio.src = fb;
+        await playAtRate(refAudio, rate);
+        lookupStatus.textContent = '已切换到 Wikimedia 兜底音频。';
+        return;
+      } catch {
+        // 落到下方统一报错
+      }
+    }
+    throw e;
+  }
+}
+
 playNormal.addEventListener('click', async () => {
-  try { await playAtRate(refAudio, RATES.normal); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}`; }
+  try { await playWithFallback(RATES.normal); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}（可试 Wikimedia 兜底，或稍后重试）`; }
 });
 playSlow.addEventListener('click', async () => {
-  try { await playAtRate(refAudio, RATES.slow); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}`; }
+  try { await playWithFallback(RATES.slow); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}（可试 Wikimedia 兜底，或稍后重试）`; }
 });
 playVerySlow.addEventListener('click', async () => {
-  try { await playAtRate(refAudio, RATES.verySlow); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}`; }
+  try { await playWithFallback(RATES.verySlow); } catch (e) { lookupStatus.textContent = `播放失败：${(e as Error).message}（可试 Wikimedia 兜底，或稍后重试）`; }
 });
 
 recBtn.addEventListener('click', async () => {
