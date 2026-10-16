@@ -14,6 +14,7 @@ const wordTitle = $('wordTitle');
 const posBadge = $('posBadge');
 const ipaText = $('ipaText');
 const defText = $('defText');
+const defToggleBtn = $('defToggleBtn');
 const refAudio = $('refAudio') as HTMLAudioElement;
 const playNormal = $('playNormal');
 const playSlow = $('playSlow');
@@ -99,6 +100,10 @@ async function lookup(word: string) {
     posBadge.style.display = info.pos ? '' : 'none';
     ipaText.textContent = info.phonetic || '—';
     defText.textContent = info.definition ? `${info.pos ? info.pos + ' · ' : ''}${info.definition}` : '';
+    // 释义默认隐藏：用户只想看英文 + 听发音，翻译/释义点“释义”才显示
+    defText.hidden = true;
+    defToggleBtn.hidden = !info.definition;
+    defToggleBtn.textContent = '释义 ▾';
     wordCard.hidden = false;
     practiceCard.hidden = false;
     resultEl.hidden = true;
@@ -156,6 +161,10 @@ async function lookup(word: string) {
 lookupBtn.addEventListener('click', () => lookup(wordInput.value));
 wordInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') lookup(wordInput.value);
+});
+defToggleBtn.addEventListener('click', () => {
+  defText.hidden = !defText.hidden;
+  defToggleBtn.textContent = defText.hidden ? '释义 ▾' : '释义 ▴';
 });
 document.getElementById('exampleChips')?.addEventListener('click', (e) => {
   const t = e.target as HTMLElement;
