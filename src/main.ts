@@ -119,9 +119,7 @@ async function lookup(word: string) {
       if (audioSrc) {
         refAudio.src = audioSrc;
         setPlayEnabled(true);
-        lookupStatus.textContent = wmUsed
-          ? '已加载。'
-          : '已加载。';
+        lookupStatus.textContent = '';
       } else {
         refAudio.removeAttribute('src');
         setPlayEnabled(false);
