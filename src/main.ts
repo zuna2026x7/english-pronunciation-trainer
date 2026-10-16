@@ -20,7 +20,6 @@ const playNormal = $('playNormal');
 const practiceCard = $('practiceCard');
 const recBtn = $('recBtn');
 const playMineBtn = $('playMineBtn');
-const scoreBtn = $('scoreBtn');
 const myAudio = $('myAudio') as HTMLAudioElement;
 const recStatus = $('recStatus');
 const modelStatus = $('modelStatus');
@@ -97,7 +96,6 @@ async function lookup(word: string) {
     myBlob = null;
     myPcm = null;
     playMineBtn.setAttribute('disabled', 'true');
-    scoreBtn.setAttribute('disabled', 'true');
     myAudio.hidden = true;
     if (info.audio || info.audioSourceUrl) {
       // 音频优先走 Wikimedia：词典 /media/*.mp3 目前 522 且要等约 20 秒才失败，
@@ -240,7 +238,6 @@ async function stopHoldRecordAndScore(): Promise<void> {
     myAudio.src = url;
     myAudio.hidden = false;
     playMineBtn.removeAttribute('disabled');
-    scoreBtn.removeAttribute('disabled');
     recStatus.textContent = '评分中…';
     await runScore();
   } catch (e) {
@@ -282,7 +279,6 @@ function letterDistance(a: string, b: string): number {
 
 async function runScore(): Promise<void> {
   if (!current || !myBlob) return;
-  scoreBtn.setAttribute('disabled', 'true');
   recStatus.textContent = '评分中…';
   try {
     const pcm = myPcm ?? (await blobToPCM16k(myBlob));
@@ -371,11 +367,9 @@ async function runScore(): Promise<void> {
   } catch (e) {
     recStatus.textContent = '评分失败，重试。';
   } finally {
-    scoreBtn.removeAttribute('disabled');
   }
 }
 
-scoreBtn.addEventListener('click', runScore);
 
 setPlayEnabled(false);
 // 默认加载一个词，打开即用
