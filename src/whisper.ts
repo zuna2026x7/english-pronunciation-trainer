@@ -10,7 +10,7 @@ function getPipeline(onProgress?: ProgressCb) {
     pipePromise = (async () => {
       const mod: any = await import('@xenova/transformers');
       const { pipeline, env } = mod;
-      // 自有服务器：模型走同源 /pronunciation/models/ 静态托管，避免直连 huggingface.co 被挡。
+      // 自有服务器：模型走同源 /models/（speak 根路径部署）或 /pronunciation/models/（旧子路径部署），避免直连 huggingface.co 被挡。
       // GitHub Pages 等外站：仍走默认 Hugging Face。
       // 注意：transformers.js 用 remoteHost + remotePathTemplate 拼 URL，
       // 自有服务器上的目录结构需为 <models>/Xenova/whisper-tiny.en/resolve/main/<file>。
@@ -21,7 +21,8 @@ function getPipeline(onProgress?: ProgressCb) {
           /\.chuangkai\.cloud$/.test(window.location.hostname) ||
           window.location.pathname.startsWith('/pronunciation/'));
       if (isSelfHosted) {
-        env.remoteHost = `${window.location.origin}/pronunciation/models`;
+        const base = window.location.pathname.startsWith('/pronunciation/') ? '/pronunciation' : '';
+        env.remoteHost = `${window.location.origin}${base}/models`;
       }
       // 允许从远程拉模型，禁用本地模型路径（浏览器无本地文件）
       env.allowLocalModels = false;

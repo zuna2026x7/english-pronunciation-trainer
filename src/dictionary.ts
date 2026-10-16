@@ -1,8 +1,15 @@
 // 自有服务器反代判断：
 // - GitHub Pages / 其他外站：直接走 https://api.dictionaryapi.dev
 // - 自有服务器（IP 或 *.benext.uk / *.chuangkai.cloud，或 /pronunciation/ 路径）：
-//   走同源反代 /pronunciation/api/dict/ -> https://api.dictionaryapi.dev/
-//   这样在 GitHub 被挡的区域，用户只访问自有域名即可用词典 + 音频。
+//   走同源反代。speak.benext.uk 是专用域名，应用直接挂在根路径 /，
+//   所以反代路径是 /api/dict/、/models/、/api/commons/、/api/wikimedia/（不再带 /pronunciation/ 前缀）。
+//   旧的 /pronunciation/ 子路径部署仍兼容：appBase 会自动识别。
+export function appBase(): string {
+  if (typeof window === 'undefined') return '';
+  const p = window.location.pathname;
+  return p === '/pronunciation' || p.startsWith('/pronunciation/') ? '/pronunciation' : '';
+}
+
 export function isSelfHosted(): boolean {
   if (typeof window === 'undefined') return false;
   const h = window.location.hostname;
@@ -15,7 +22,7 @@ export function isSelfHosted(): boolean {
 }
 
 function dictBase(): string {
-  return isSelfHosted() ? '/pronunciation/api/dict' : 'https://api.dictionaryapi.dev';
+  return isSelfHosted() ? `${appBase()}/api/dict` : 'https://api.dictionaryapi.dev';
 }
 
 /** 把词典返回的音频 URL 转成同源反代 URL（仅自有服务器时），避免浏览器直连被挡的源站。 */
@@ -23,9 +30,10 @@ function rewriteAudioUrl(url: string): string {
   if (!url) return url;
   if (!isSelfHosted()) return url;
   // 词典音频形如 https://api.dictionaryapi.dev/media/pronunciations/en/hello-uk.mp3
-  // 反代：/pronunciation/api/dict/media/... -> https://api.dictionaryapi.dev/media/...
+  // 反代：/api/dict/media/... -> https://api.dictionaryapi.dev/media/...（根路径部署）
+  // 或 /pronunciation/api/dict/media/...（旧子路径部署）
   const m = url.match(/^https:\/\/api\.dictionaryapi\.dev\/(.+)$/);
-  if (m) return `/pronunciation/api/dict/${m[1]}`;
+  if (m) return `${appBase()}/api/dict/${m[1]}`;
   return url;
 }
 
@@ -76,7 +84,8 @@ export async function fetchWord(raw: string): Promise<WordInfo> {
  * dictionaryapi 的 /media/*.mp3 曾出现 Cloudflare 522 / 超时（2026-10-16 实测：JSON 正常，media 全超时）。
  * 而 Commons 本身正常。词典返回的 sourceUrl 指向 Commons 文件页（如 curid=9021983 -> File:En-uk-hello.ogg），
  * 用 Commons API 解析出直链 upload.wikimedia.org/...ogg，浏览器可直接播放（ogg）。
- * 自有服务器时走同源反代 /pronunciation/api/wikimedia/ 与 /pronunciation/api/commons/，避免直连被挡。
+ * 自有服务器时走同源反代 /api/wikimedia/ 与 /api/commons/（根路径部署），
+ * 或 /pronunciation/api/...（旧子路径部署），避免直连被挡。
  */
 export async function fetchWikimediaAudio(sourceUrl: string): Promise<string> {
   if (!sourceUrl) throw new Error('无 Wikimedia 源链接');
@@ -84,7 +93,7 @@ export async function fetchWikimediaAudio(sourceUrl: string): Promise<string> {
   if (!m) throw new Error('无法从 sourceUrl 解析 curid');
   const pageid = m[1];
   const apiBase = isSelfHosted()
-    ? '/pronunciation/api/commons/w/api.php'
+    ? `${appBase()}/api/commons/w/api.php`
     : 'https://commons.wikimedia.org/w/api.php';
   const url = `${apiBase}?action=query&prop=imageinfo&iiprop=url&format=json&pageids=${pageid}`;
   const res = await fetch(url);
@@ -97,9 +106,9 @@ export async function fetchWikimediaAudio(sourceUrl: string): Promise<string> {
   // 去掉 Commons 的 utm 参数，保持干净 URL
   const clean = rawUrl.split('?')[0];
   if (!isSelfHosted()) return clean;
-  // upload.wikimedia.org/wikipedia/commons/4/48/En-uk-hello.ogg -> /pronunciation/api/wikimedia/wikipedia/commons/4/48/En-uk-hello.ogg
+  // upload.wikimedia.org/wikipedia/commons/4/48/En-uk-hello.ogg -> /api/wikimedia/wikipedia/commons/4/48/En-uk-hello.ogg（根路径）或 /pronunciation/api/wikimedia/...（旧子路径）
   const mu = clean.match(/^https:\/\/upload\.wikimedia\.org\/(.+)$/);
-  if (mu) return `/pronunciation/api/wikimedia/${mu[1]}`;
+  if (mu) return `${appBase()}/api/wikimedia/${mu[1]}`;
   return clean;
 }
 
