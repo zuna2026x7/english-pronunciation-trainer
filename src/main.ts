@@ -42,18 +42,25 @@ let myBlob: Blob | null = null;
 let myPcm: Float32Array | null = null;
 let triedWikimediaFallback = false;
 
-// 音频兜底：dictionaryapi /media/ 曾 522/超时，自动切 Wikimedia Commons 直链（ogg）再播一次。
-// 只兜底一次，避免循环。refAudio 的 error 事件由 playAtRate 的 play() 失败触发时也会走到这里。
+// 音频兜底：主音频失败时自动切到另一个源再播一次，只兜底一次，避免循环。
+// 现在 lookup 优先用 Wikimedia，失败则切回词典音频；若 lookup 用的是词典音频，失败则切 Wikimedia。
 refAudio.addEventListener('error', async () => {
-  if (!current?.audioSourceUrl || triedWikimediaFallback) return;
+  if (!current || triedWikimediaFallback) return;
   triedWikimediaFallback = true;
+  const isWm = refAudio.src.includes('wikimedia') || refAudio.src.includes('upload.wikimedia.org');
   try {
-    lookupStatus.textContent = '主音频源暂时不可用，正在尝试 Wikimedia 兜底音频…';
-    const fb = await fetchWikimediaAudio(current.audioSourceUrl);
-    refAudio.src = fb;
-    lookupStatus.textContent = '已切换到 Wikimedia 兜底音频，请再点播放。';
+    if (isWm && current.audio) {
+      lookupStatus.textContent = 'Wikimedia 音频失败，正在切回词典音频…';
+      refAudio.src = current.audio;
+      lookupStatus.textContent = '已切回词典音频，请再点播放。';
+    } else if (!isWm && current.audioSourceUrl) {
+      lookupStatus.textContent = '词典音频失败，正在尝试 Wikimedia 兜底音频…';
+      const fb = await fetchWikimediaAudio(current.audioSourceUrl);
+      refAudio.src = fb;
+      lookupStatus.textContent = '已切换到 Wikimedia 兜底音频，请再点播放。';
+    }
   } catch (e) {
-    lookupStatus.textContent = `主音频与 Wikimedia 兜底都失败了：${(e as Error).message}（词典音标仍可用于跟读评分）`;
+    lookupStatus.textContent = `两个音频源都失败了：${(e as Error).message}（词典音标仍可用于跟读评分）`;
   }
 });
 
@@ -101,11 +108,36 @@ async function lookup(word: string) {
     playMineBtn.setAttribute('disabled', 'true');
     scoreBtn.setAttribute('disabled', 'true');
     myAudio.hidden = true;
-    if (info.audio) {
-      triedWikimediaFallback = false;
-      refAudio.src = info.audio;
-      setPlayEnabled(true);
-      lookupStatus.textContent = '已加载真人发音，可以点三档播放试听。';
+    if (info.audio || info.audioSourceUrl) {
+      // 音频优先走 Wikimedia：词典 /media/*.mp3 目前 522 且要等约 20 秒才失败，
+      // 用户点播放会长时间没声。Wikimedia Commons 实测快且可用，有 sourceUrl 时优先用它，
+      // 失败则回落到词典音频（error 监听会再兜底一次）。
+      let audioSrc = info.audio;
+      let wmUsed = false;
+      if (info.audioSourceUrl) {
+        try {
+          const wm = await Promise.race([
+            fetchWikimediaAudio(info.audioSourceUrl),
+            new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
+          ]);
+          audioSrc = wm;
+          wmUsed = true;
+        } catch {
+          // 保持词典音频为主，播放失败时 error 监听会再试 Wikimedia
+        }
+      }
+      triedWikimediaFallback = wmUsed;
+      if (audioSrc) {
+        refAudio.src = audioSrc;
+        setPlayEnabled(true);
+        lookupStatus.textContent = wmUsed
+          ? '已加载真人发音（Wikimedia），可以点三档播放试听。'
+          : '已加载真人发音，可以点三档播放试听。';
+      } else {
+        refAudio.removeAttribute('src');
+        setPlayEnabled(false);
+        lookupStatus.textContent = '已找到词条，但该词暂无真人发音音频（仍可录音评分）。';
+      }
     } else {
       refAudio.removeAttribute('src');
       setPlayEnabled(false);
@@ -135,14 +167,20 @@ async function playWithFallback(rate: number) {
   try {
     await playAtRate(refAudio, rate);
   } catch (e) {
-    // 主音频加载失败时，error 监听已尝试切 Wikimedia；这里再兜底一次（若 error 未触发）
-    if (current?.audioSourceUrl && !triedWikimediaFallback) {
+    // 主音频播放失败时，切到另一个源再试一次（若 error 监听未触发）
+    if (current && !triedWikimediaFallback) {
       triedWikimediaFallback = true;
       try {
-        const fb = await fetchWikimediaAudio(current.audioSourceUrl);
-        refAudio.src = fb;
+        const isWm = refAudio.src.includes('wikimedia') || refAudio.src.includes('upload.wikimedia.org');
+        if (isWm && current.audio) {
+          refAudio.src = current.audio;
+        } else if (!isWm && current.audioSourceUrl) {
+          refAudio.src = await fetchWikimediaAudio(current.audioSourceUrl);
+        } else {
+          throw e;
+        }
         await playAtRate(refAudio, rate);
-        lookupStatus.textContent = '已切换到 Wikimedia 兜底音频。';
+        lookupStatus.textContent = '已切换到备用音频源。';
         return;
       } catch {
         // 落到下方统一报错

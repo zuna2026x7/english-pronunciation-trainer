@@ -47,36 +47,135 @@ export interface WordInfo {
   allPhonetics: { text?: string; audio?: string; sourceUrl?: string }[];
 }
 
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ').trim();
+}
+
+/**
+ * Wiktionary 兜底查词：dictionaryapi 对部分词（如 thought、banana）会 522 且等 20 秒才失败，
+ * 而 hello/world/apple 等缓存过的词是 200。522 不是拼写错误，是源站 origin 超时。
+ * 此时用 Wiktionary REST（释义）+ HTML（音标 + En-*.ogg 音频）兜底，仍可听音、仍可评分
+ * （无音标时评分走拼写兜底，见 main.ts）。
+ */
+async function fetchWordFromWiktionary(word: string): Promise<WordInfo> {
+  const base = isSelfHosted() ? `${appBase()}/api/wiktionary` : 'https://en.wiktionary.org';
+  // 释义（REST，JSON，快）
+  let pos = '';
+  let definition = '';
+  try {
+    const r = await fetch(`${base}/api/rest_v1/page/definition/${encodeURIComponent(word)}`);
+    if (r.ok) {
+      const j = await r.json();
+      const en = (j?.en ?? []) as any[];
+      const first = en[0];
+      pos = first?.partOfSpeech ?? '';
+      const defs = (first?.definitions ?? []) as any[];
+      const rawDef = defs.find((d) => stripHtml(d?.definition ?? ''))?.definition ?? '';
+      definition = stripHtml(rawDef);
+    }
+  } catch {
+    // 释义失败不致命，继续拿音标/音频
+  }
+  // 音标 + 音频（wikitext API，JSON 小、响应头小，避免 HTML 大页面导致 nginx 502 "too big header"）
+  let phonetic = '';
+  let audio = '';
+  try {
+    const r = await fetch(`${base}/w/api.php?action=parse&page=${encodeURIComponent(word)}&prop=wikitext&format=json`);
+    if (!r.ok) throw new Error(`Wiktionary 查词失败（HTTP ${r.status}）`);
+    const j = await r.json();
+    const wt: string = j?.parse?.wikitext?.['*'] ?? '';
+    const ipaM = wt.match(/\{\{IPA\|en\|(\/[^}|]+?\/)/);
+    if (ipaM) phonetic = ipaM[1];
+    // {{audio|en|en-us-thought.ogg|a=US}} -> 文件名，进 Commons 解析直链
+    const audioM = wt.match(/\{\{audio\|en\|([^|}]+?\.(?:ogg|mp3|wav))/i);
+    const fileName = audioM?.[1]?.trim();
+    if (fileName) {
+      const commonsBase = isSelfHosted() ? `${appBase()}/api/commons/w/api.php` : 'https://commons.wikimedia.org/w/api.php';
+      const cr = await fetch(`${commonsBase}?action=query&prop=imageinfo&iiprop=url&format=json&titles=${encodeURIComponent('File:' + fileName)}`);
+      if (cr.ok) {
+        const cj = await cr.json();
+        const pages = cj?.query?.pages ?? {};
+        const page = Object.values(pages)[0] as any;
+        const rawUrl: string | undefined = page?.imageinfo?.[0]?.url;
+        if (rawUrl) {
+          const clean = rawUrl.split('?')[0];
+          if (isSelfHosted()) {
+            const mu = clean.match(/^https:\/\/upload\.wikimedia\.org\/(.+)$/);
+            audio = mu ? `${appBase()}/api/wikimedia/${mu[1]}` : clean;
+          } else {
+            audio = clean;
+          }
+        }
+      }
+    }
+  } catch {
+    // wikitext 解析失败时，若已有释义仍返回（可评分兜底），否则抛错
+    if (!definition && !phonetic) throw new Error(`词典与 Wiktionary 都没找到 “${word}”，请检查拼写`);
+  }
+  if (!definition && !phonetic && !audio) throw new Error(`词典里没找到 “${word}”，请检查拼写`);
+  return {
+    word,
+    phonetic,
+    audio,
+    audioSourceUrl: '',
+    pos,
+    definition,
+    allPhonetics: phonetic || audio ? [{ text: phonetic || undefined, audio: audio || undefined }] : [],
+  };
+}
+
 export async function fetchWord(raw: string): Promise<WordInfo> {
   const word = raw.trim().toLowerCase();
   if (!word) throw new Error('请输入单词');
   if (!/^[a-z][a-z' -]*$/i.test(word)) throw new Error('请输入英文单词（仅字母、连字符、撇号）');
-  const res = await fetch(`${dictBase()}/api/v2/entries/en/${encodeURIComponent(word)}`);
-  if (res.status === 404) throw new Error(`词典里没找到 “${word}”，请检查拼写`);
-  if (!res.ok) throw new Error(`词典请求失败（HTTP ${res.status}），请稍后重试`);
-  const data = await res.json();
-  const entry = Array.isArray(data) ? data[0] : null;
-  if (!entry) throw new Error('词典返回为空');
-  const phonetics: { text?: string; audio?: string; sourceUrl?: string }[] = entry.phonetics ?? [];
-  // 优先选同时有音标和音频的，其次有音频的，其次有音标的
-  const withBoth = phonetics.find((p) => p.text && p.audio);
-  const withAudio = phonetics.find((p) => p.audio);
-  const withText = phonetics.find((p) => p.text);
-  const chosen = withBoth ?? withAudio ?? withText;
-  const phonetic = entry.phonetic ?? chosen?.text ?? '';
-  const audio = rewriteAudioUrl(withAudio?.audio ?? chosen?.audio ?? '');
-  const audioSourceUrl = withAudio?.sourceUrl ?? chosen?.sourceUrl ?? '';
-  const meaning = entry.meanings?.[0];
-  const def = meaning?.definitions?.[0]?.definition ?? '';
-  return {
-    word: entry.word ?? word,
-    phonetic,
-    audio,
-    audioSourceUrl,
-    pos: meaning?.partOfSpeech ?? '',
-    definition: def,
-    allPhonetics: phonetics,
-  };
+  // 主词典 8 秒超时：522 要等约 20 秒才返回，超时直接走 Wiktionary 兜底，不让用户干等。
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`${dictBase()}/api/v2/entries/en/${encodeURIComponent(word)}`, { signal: ctrl.signal });
+    if (res.status === 404) {
+      // 主词典 404 可能是真没词，也可能是源站问题：先试 Wiktionary，仍无才报 404
+      try {
+        return await fetchWordFromWiktionary(word);
+      } catch {
+        throw new Error(`词典里没找到 “${word}”，请检查拼写`);
+      }
+    }
+    if (!res.ok) throw new Error(`词典请求失败（HTTP ${res.status}）`);
+    const data = await res.json();
+    const entry = Array.isArray(data) ? data[0] : null;
+    if (!entry) throw new Error('词典返回为空');
+    const phonetics: { text?: string; audio?: string; sourceUrl?: string }[] = entry.phonetics ?? [];
+    // 优先选同时有音标和音频的，其次有音频的，其次有音标的
+    const withBoth = phonetics.find((p) => p.text && p.audio);
+    const withAudio = phonetics.find((p) => p.audio);
+    const withText = phonetics.find((p) => p.text);
+    const chosen = withBoth ?? withAudio ?? withText;
+    const phonetic = entry.phonetic ?? chosen?.text ?? '';
+    const audio = rewriteAudioUrl(withAudio?.audio ?? chosen?.audio ?? '');
+    const audioSourceUrl = withAudio?.sourceUrl ?? chosen?.sourceUrl ?? '';
+    const meaning = entry.meanings?.[0];
+    const def = meaning?.definitions?.[0]?.definition ?? '';
+    return {
+      word: entry.word ?? word,
+      phonetic,
+      audio,
+      audioSourceUrl,
+      pos: meaning?.partOfSpeech ?? '',
+      definition: def,
+      allPhonetics: phonetics,
+    };
+  } catch (e) {
+    // 主词典失败（522/超时/断网）-> Wiktionary 兜底；兜底也失败才报主词典的错
+    if (e instanceof Error && e.message.startsWith('词典里没找到')) throw e;
+    try {
+      return await fetchWordFromWiktionary(word);
+    } catch {
+      throw e;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
