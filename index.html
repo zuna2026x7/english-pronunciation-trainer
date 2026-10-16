@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="英语发音纠正：输入单词听正确读音（三档语速），录音评分 + 音标级错误定位。零 Google 依赖，语音识别本地运行。" />
+    <title>英语发音纠正 · Pronunciation Trainer</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="hero">
+        <h1>英语发音纠正 <span class="sub">Pronunciation Trainer</span></h1>
+        <p class="tagline">输入单词 → 听正确读音（三档语速）→ 跟读录音 → 打分 + 音标级定位哪里读错</p>
+        <p class="nog">零 Google 依赖 · 识别模型在浏览器本地运行 · 音频来自 Free Dictionary API</p>
+      </header>
+
+      <section class="card search-card">
+        <label for="wordInput">输入一个英文单词</label>
+        <div class="search-row">
+          <input id="wordInput" type="text" placeholder="例如：thought / beautiful / pronunciation" autocomplete="off" spellcheck="false" />
+          <button id="lookupBtn" class="btn primary">查词 &amp; 加载读音</button>
+        </div>
+        <div class="chips" id="exampleChips">
+          <button data-word="hello">hello</button>
+          <button data-word="thought">thought</button>
+          <button data-word="beautiful">beautiful</button>
+          <button data-word="pronunciation">pronunciation</button>
+          <button data-word="world">world</button>
+          <button data-word="through">through</button>
+          <button data-word="comfortable">comfortable</button>
+          <button data-word="vegetable">vegetable</button>
+        </div>
+        <p id="lookupStatus" class="status" aria-live="polite"></p>
+      </section>
+
+      <section class="card" id="wordCard" hidden>
+        <div class="word-head">
+          <h2 id="wordTitle">—</h2>
+          <span id="posBadge" class="badge"></span>
+        </div>
+        <p class="ipa" id="ipaText">—</p>
+        <p class="def" id="defText"></p>
+
+        <div class="play-row">
+          <button id="playNormal" class="btn play">▶ 正常 <small>1.0×</small></button>
+          <button id="playSlow" class="btn play">▶ 慢速 <small>0.65×</small></button>
+          <button id="playVerySlow" class="btn play">▶ 极慢 <small>0.40×</small></button>
+        </div>
+        <p class="hint">三档语速均变速不变调（preservesPitch），极慢也能听清每个音素。无音频时按钮会禁用。</p>
+        <audio id="refAudio" preload="auto" playsinline></audio>
+      </section>
+
+      <section class="card" id="practiceCard" hidden>
+        <h3>跟读练习 · 录音评分</h3>
+        <p class="hint">点“开始录音”后朗读上方单词，点“停止”结束。首次使用需允许麦克风权限。评分模型首次加载约需下载 ~40MB（Whisper tiny），之后会缓存。</p>
+        <div class="rec-row">
+          <button id="recBtn" class="btn danger">● 开始录音</button>
+          <button id="playMineBtn" class="btn" disabled>▶ 播放我的录音</button>
+          <button id="scoreBtn" class="btn primary" disabled>打分 &amp; 找错误</button>
+        </div>
+        <audio id="myAudio" controls hidden></audio>
+        <p id="recStatus" class="status" aria-live="polite"></p>
+        <p id="modelStatus" class="status muted"></p>
+
+        <div id="result" class="result" hidden>
+          <div class="score-row">
+            <div class="score-circle"><span id="scoreNum">—</span><small>/ 100</small></div>
+            <div>
+              <p class="grade" id="gradeText"></p>
+              <p>识别为：<strong id="recognizedText">—</strong></p>
+              <p class="muted small">识别不一定 100% 准确，评分以音素对齐为准，请结合回放复听。</p>
+            </div>
+          </div>
+
+          <h4>音标对比 <span class="small muted">绿 = 正确 · 红 = 读错/漏读 · 灰 = 多读</span></h4>
+          <div class="phon-row">
+            <div><span class="lbl">标准</span><div id="expectedPhonemes" class="phonemes"></div></div>
+            <div><span class="lbl">你的</span><div id="userPhonemes" class="phonemes"></div></div>
+          </div>
+          <ul id="errorList" class="errors"></ul>
+          <p id="fallbackNote" class="status muted" hidden></p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>练习记录（仅保存在本设备）</h3>
+        <ul id="historyList" class="history"></ul>
+        <button id="clearHistoryBtn" class="btn small">清空记录</button>
+      </section>
+
+      <section class="card how">
+        <h3>评分原理（透明可复核）</h3>
+        <ol>
+          <li><strong>标准音标</strong>来自 Free Dictionary API 的 IPA；你的录音由本地 Whisper tiny.en 转写为文本，再查该识别词的 IPA。</li>
+          <li><strong>音素对齐</strong>：把两串 IPA 按最长匹配切成音素，用 Levenshtein 对齐，算出替换 / 漏读 / 多读。</li>
+          <li><strong>分数</strong> = 100 × (1 − 编辑距离 / max(标准音素数, 你的音素数))，整词识别一致时加分并封顶 100。</li>
+          <li><strong>不依赖 Google</strong>：不用 Web Speech API（Chrome 里走 Google）、不用 Google TTS / ML Kit / Firebase，<code>package.json</code> 零 Google 包。</li>
+        </ol>
+        <p class="muted small">局限：Whisper 对口音、噪音敏感；个别单词无真人音频时会禁用播放按钮，但仍可录音评分。极慢速 0.40× 在个别浏览器上音质略有损失，属浏览器变速算法限制。</p>
+      </section>
+
+      <footer class="foot">MIT · 音频与释义 © 各自来源 · 模型：Xenova/whisper-tiny.en（Hugging Face）</footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
