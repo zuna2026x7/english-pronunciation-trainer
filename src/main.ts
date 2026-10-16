@@ -51,11 +51,11 @@ refAudio.addEventListener('error', async () => {
   const isWm = refAudio.src.includes('wikimedia') || refAudio.src.includes('upload.wikimedia.org');
   try {
     if (isWm && current.audio) {
-      lookupStatus.textContent = '切换音频源…';
+      lookupStatus.textContent = '切换音频源';
       refAudio.src = current.audio;
       lookupStatus.textContent = '请再点播放。';
     } else if (!isWm && current.audioSourceUrl) {
-      lookupStatus.textContent = '切换音频源…';
+      lookupStatus.textContent = '切换音频源';
       const fb = await fetchWikimediaAudio(current.audioSourceUrl);
       refAudio.src = fb;
       lookupStatus.textContent = '请再点播放。';
@@ -73,7 +73,7 @@ function setPlayEnabled(enabled: boolean) {
 }
 
 async function lookup(word: string) {
-  lookupStatus.textContent = '…';
+  lookupStatus.textContent = '';
   lookupBtn.setAttribute('disabled', 'true');
   try {
     const info = await fetchWord(word);
@@ -206,7 +206,7 @@ async function startHoldRecord(): Promise<boolean> {
   try {
     await startPromise;
     recBtn.textContent = '松开打分';
-    recStatus.textContent = '录音中…';
+    recStatus.textContent = '录音中';
     resultEl.hidden = true;
     return true;
   } catch (e) {
@@ -224,7 +224,7 @@ async function stopHoldRecordAndScore(): Promise<void> {
     try { await startPromise; } catch { return; }
   }
   if (!recorder.isRecording) return;
-  recBtn.textContent = '…';
+  recBtn.textContent = '按住说话';
   try {
     const blob = await recorder.stop();
     myBlob = blob;
@@ -233,7 +233,7 @@ async function stopHoldRecordAndScore(): Promise<void> {
     myAudio.src = url;
     myAudio.hidden = false;
     playMineBtn.removeAttribute('disabled');
-    recStatus.textContent = '评分中…';
+    recStatus.textContent = '评分中';
     await runScore();
   } catch (e) {
     recStatus.textContent = '停止失败，重试。';
@@ -274,7 +274,7 @@ function letterDistance(a: string, b: string): number {
 
 async function runScore(): Promise<void> {
   if (!current || !myBlob) return;
-  recStatus.textContent = '评分中…';
+  recStatus.textContent = '评分中';
   try {
     const pcm = myPcm ?? (await blobToPCM16k(myBlob));
     myPcm = pcm;
