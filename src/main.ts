@@ -326,7 +326,6 @@ async function stopHoldRecordAndScore(): Promise<void> {
     myPcm = null;
     const url = URL.createObjectURL(blob);
     myAudio.src = url;
-    myAudio.hidden = false;
     playMineBtn.hidden = false;
     recStatus.textContent = '评分中';
     await runScore();
@@ -423,7 +422,11 @@ settingsLogBtn.addEventListener('click', async () => {
 });
 
 playMineBtn.addEventListener('click', async () => {
-  try { await myAudio.play(); } catch (e) { recStatus.textContent = '回放失败。'; }
+  try {
+    if (!myAudio.paused) { myAudio.pause(); return; }
+    myAudio.currentTime = 0;
+    await myAudio.play();
+  } catch (e) { recStatus.textContent = '回放失败。'; }
 });
 
 function letterDistance(a: string, b: string): number {
