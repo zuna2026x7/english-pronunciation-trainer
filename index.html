@@ -63,7 +63,6 @@
           <button id="recBtn" class="btn danger hold-btn icon-btn" aria-label="按住录音">🎙️</button>
           <button id="playMineBtn" class="btn" hidden>▶ 回放</button>
         </div>
-        <audio id="myAudio" hidden></audio>
         <p id="recStatus" class="status" aria-live="polite"></p>
         <p id="modelStatus" class="status muted"></p>
 
@@ -86,6 +85,7 @@
       </section>
 
     </main>
+    <footer class="app-footer">发音 <span id="footerVersion">V9</span></footer>
     <script type="module" src="/src/main.ts"></script>
     <script>
       // 热更新引导：必须放在入口 module 脚本之后（module 脚本延迟执行，

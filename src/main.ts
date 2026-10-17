@@ -48,7 +48,6 @@ const settingsLogBtn = $('settingsLogBtn');
 const settingsUpdateBtn = $('settingsUpdateBtn');
 const settingsVersion = $('settingsVersion');
 const settingsStatus = $('settingsStatus');
-const myAudio = $('myAudio') as HTMLAudioElement;
 const recStatus = $('recStatus');
 const modelStatus = $('modelStatus');
 const resultEl = $('result');
@@ -65,6 +64,7 @@ let ukPhonetic = ''; // 本次查词的英式音标（本地词表 p 字段 / �
 let recorder: Recorder | null = null;
 let myBlob: Blob | null = null;
 let myPcm: Float32Array | null = null;
+let playbackSource: AudioBufferSourceNode | null = null;
 let triedWikimediaFallback = false;
 
 // 连点循环变速：2 秒内连点 -> 下一档（1.0 -> 0.65 -> 0.40 -> 1.0）；间隔超过 2 秒 -> 回到 1.0
@@ -156,8 +156,8 @@ async function lookup(word: string) {
     recStatus.textContent = '';
     myBlob = null;
     myPcm = null;
+    if (playbackSource) { try { playbackSource.stop(); } catch {} playbackSource = null; }
     playMineBtn.hidden = true;
-    myAudio.hidden = true;
     refAudio.removeAttribute('src');
     triedWikimediaFallback = false;
     // 播放按钮始终可用：有真人音频播真人音频，没有则 TTS 兜底。
@@ -324,8 +324,6 @@ async function stopHoldRecordAndScore(): Promise<void> {
     const blob = await recorder.stop();
     myBlob = blob;
     myPcm = null;
-    const url = URL.createObjectURL(blob);
-    myAudio.src = url;
     playMineBtn.hidden = false;
     recStatus.textContent = '评分中';
     await runScore();
@@ -368,9 +366,12 @@ settingsBtn.addEventListener('click', () => {
   renderVersion();
 });
 
-// 版本显示：当前生效版（内置版与热更新版取较新者）
+// App 版本号（正式版号，随发布递增；设置页与页脚都显示，方便确认当前装的是哪版）。
+export const APP_VERSION = 'V9';
+
+// 版本显示：正式版号 + 热更新版（内置版与热更新版取较新者）
 function renderVersion(): void {
-  settingsVersion.textContent = `版本 ${getCurrentVersion() || '—'}`;
+  settingsVersion.textContent = `版本 ${APP_VERSION}（${getCurrentVersion() || '—'}）`;
 }
 
 // 检查更新：手动点按；有新版则下载并应用，下次启动生效；不自动重启、不强制重启。
@@ -423,10 +424,23 @@ settingsLogBtn.addEventListener('click', async () => {
 });
 
 playMineBtn.addEventListener('click', async () => {
+  // 回放用 Web Audio API（解码 PCM 后播），不用 <audio> 元素：
+  // MediaRecorder 的 WebM 头里没有 duration，<audio> 播它会失败（“回放失败”）。
+  // decodeAudioData 不依赖 duration，能解就能播，和打分用同一路解码。
   try {
-    if (!myAudio.paused) { myAudio.pause(); return; }
-    myAudio.currentTime = 0;
-    await myAudio.play();
+    if (playbackSource) { try { playbackSource.stop(); } catch {} playbackSource = null; return; }
+    if (!myBlob) return;
+    const pcm = myPcm ?? (await blobToPCM16k(myBlob));
+    myPcm = pcm;
+    const ctx = new AudioContext();
+    const buf = ctx.createBuffer(1, pcm.length, 16000);
+    buf.getChannelData(0).set(pcm);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    playbackSource = src;
+    src.onended = () => { playbackSource = null; void ctx.close().catch(() => {}); };
+    src.start();
   } catch (e) { recStatus.textContent = '回放失败。'; }
 });
 
