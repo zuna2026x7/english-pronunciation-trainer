@@ -38,7 +38,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      # 不用 android-actions/setup-android：它会在新版 cmdline-tools 上跑 `sdkmanager tools`
+      # （该包已不存在）而失败。ubuntu-latest 自带 Android SDK（ANDROID_HOME 已设好），Gradle 直接用它。
+      - name: Check preinstalled Android SDK
+        run: echo "ANDROID_HOME=$ANDROID_HOME" && ls "$ANDROID_HOME/build-tools" | tail -n 3
       - name: Build debug APK
         run: |
           cd android
