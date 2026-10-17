@@ -301,7 +301,7 @@ async function startHoldRecord(): Promise<boolean> {
     await startPromise;
     recBtn.classList.add('recording');
     recStatus.textContent = '录音中';
-    resultEl.hidden = true;
+    // 不隐藏结果区：hidden 会让布局回流、页面跳动（“位置飘走”）。旧结果留着，新分数出来再覆盖。
     return true;
   } catch (e) {
     log('error', `record start failed: ${(e as Error)?.name || e}`);

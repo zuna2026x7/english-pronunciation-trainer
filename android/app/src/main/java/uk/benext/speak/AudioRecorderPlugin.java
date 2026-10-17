@@ -97,14 +97,22 @@ public class AudioRecorderPlugin extends Plugin {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             ? new MediaRecorder(getContext())
             : new MediaRecorder();
-    recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+    recorder.setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION);
+    // 语音识别专用源：比 MIC 少做失真处理（降噪/增益），Whisper 识别更准。
+    // 显式 16kHz 单声道（Whisper 原生格式），免重采样；32kbps 足够语音。
     if (webm) {
       recorder.setOutputFormat(MediaRecorder.OutputFormat.WEBM);
       recorder.setAudioEncoder(MediaRecorder.AudioEncoder.OPUS);
+      recorder.setAudioSamplingRate(16000);
+      recorder.setAudioChannels(1);
+      recorder.setAudioEncodingBitRate(32000);
       outMime = "audio/webm";
     } else {
       recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
       recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+      recorder.setAudioSamplingRate(16000);
+      recorder.setAudioChannels(1);
+      recorder.setAudioEncodingBitRate(32000);
       outMime = "audio/mp4";
     }
     recorder.setOutputFile(outFile.getAbsolutePath());
