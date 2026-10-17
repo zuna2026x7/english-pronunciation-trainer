@@ -12,9 +12,11 @@ public class MainActivity extends BridgeActivity {
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
+    // 必须在 super.onCreate 之前注册：Bridge 在 super.onCreate 里创建，
+    // registerPlugin 只往 builder 里加，之后调用不会生效（曾导致
+    // "MicPermission plugin is not implemented on android"）。
+    registerPlugin(AudioRecorderPlugin.class);
     super.onCreate(savedInstanceState);
-    // 供 JS 在每次录音前调用，处理用户上次拒绝后再次申请的情况
-    registerPlugin(MicPermissionPlugin.class);
     // 首次启动即申请：Capacitor 不会自动弹系统授权，
     // 只在 Manifest 里声明时 WebView 的 getUserMedia 会直接被拒。
     if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
