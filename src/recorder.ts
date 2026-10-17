@@ -1,5 +1,22 @@
 // 录音 + 转成 Whisper 需要的 16kHz 单声道 Float32 PCM。
 
+import { Capacitor } from '@capacitor/core';
+import { log, setState } from './logger';
+
+/** App 端（Capacitor）：每次录音前通过原生桥接申请麦克风权限。
+ *  网页端跳过；插件不存在（旧 APK）时直接放行，让 getUserMedia 去报错。 */
+async function ensureMicPermission(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const plugin = Capacitor.registerPlugin<{ requestMic(): Promise<void> }>('MicPermission');
+    await plugin.requestMic();
+    setState('mic', 'granted');
+  } catch (e) {
+    setState('mic', `request failed: ${(e as Error)?.message || e}`);
+    throw e;
+  }
+}
+
 export class Recorder {
   private stream: MediaStream | null = null;
   private rec: MediaRecorder | null = null;
@@ -9,7 +26,16 @@ export class Recorder {
   async start(): Promise<void> {
     this.chunks = [];
     this.blob = null;
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    await ensureMicPermission();
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      setState('mic', 'getUserMedia ok');
+      log('log', 'getUserMedia ok');
+    } catch (e) {
+      setState('mic', `getUserMedia failed: ${(e as Error)?.name || e}`);
+      log('error', `getUserMedia failed: ${(e as Error)?.name || e} ${(e as Error)?.message || ''}`);
+      throw e;
+    }
     const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus'
       : MediaRecorder.isTypeSupported('audio/webm')

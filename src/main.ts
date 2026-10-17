@@ -4,6 +4,9 @@ import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
 import { transcribePCM, warmupModel } from './whisper';
 import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describeOp } from './ipa';
 import { lookupLocal, speakTTS } from './offline';
+import { initLogger, log, setState, uploadLogs } from './logger';
+
+initLogger();
 
 // Service Worker：缓存应用壳 + 词表 + 模型文件，首次联网加载后可离线用。
 // 注册失败（如 file:// 或旧浏览器）不影响正常使用。
@@ -29,6 +32,7 @@ const playNormal = $('playNormal');
 const practiceCard = $('practiceCard');
 const recBtn = $('recBtn');
 const playMineBtn = $('playMineBtn');
+const logBtn = $('logBtn');
 const myAudio = $('myAudio') as HTMLAudioElement;
 const recStatus = $('recStatus');
 const modelStatus = $('modelStatus');
@@ -89,6 +93,7 @@ async function lookup(word: string) {
     const local = await lookupLocal(word);
     const fromLocal = !!local;
     const info = local ?? (await fetchWord(word));
+    log('log', `lookup done: ${word} fromLocal=${fromLocal}`);
     current = info;
     wordTitle.textContent = info.word;
     posBadge.textContent = info.pos || '';
@@ -135,7 +140,7 @@ async function lookup(word: string) {
       })();
     }
     // 后台预热识别模型，评分时更快
-    warmupModel((m) => (modelStatus.textContent = m));
+    warmupModel((m) => { modelStatus.textContent = m; setState('model', m || 'ready'); });
     wordInput.value = info.word;
   } catch (e) {
     lookupStatus.textContent = '没找到，检查拼写。';
@@ -231,6 +236,7 @@ playNormal.addEventListener('click', async () => {
   }
   lastPlayTapAt = now;
   const rate = SPEEDS[playSpeedIdx];
+  log('log', `play: ${current?.word || ''} rate=${rate}`);
   try { await playWithFallback(rate); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 
@@ -254,6 +260,7 @@ async function startHoldRecord(): Promise<boolean> {
     resultEl.hidden = true;
     return true;
   } catch (e) {
+    log('error', `record start failed: ${(e as Error)?.name || e}`);
     recStatus.textContent = '无法录音，请允许麦克风权限。';
     return false;
   } finally {
@@ -304,6 +311,11 @@ recBtn.addEventListener('pointerup', endHold);
 // 只用 pointerup / pointercancel 结束；触摸下 pointerup 即使手指滑出也会触发。
 recBtn.addEventListener('pointercancel', endHold);
 recBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+
+logBtn.addEventListener('click', async () => {
+  const ok = await uploadLogs();
+  recStatus.textContent = ok ? '日志已发送' : '日志发送失败';
+});
 
 playMineBtn.addEventListener('click', async () => {
   try { await myAudio.play(); } catch (e) { recStatus.textContent = '回放失败。'; }
@@ -403,11 +415,13 @@ async function runScore(): Promise<void> {
       }
     }
 
+    log('log', `score: word=${current?.word} score=${score} recognized=${recognizedFull}`);
     scoreNum.textContent = String(score);
     gradeText.textContent = gradeForScore(score);
     resultEl.hidden = false;
     recStatus.textContent = '';
   } catch (e) {
+    log('error', `score failed: ${(e as Error)?.message || e}`);
     // 之前这里吞掉了具体原因，统一只显示“评分失败，重试。”，
     // 用户无法区分是“没录到声音 / 录音太短 / 模型没加载上”。现在把具体原因显示出来。
     recStatus.textContent = e instanceof Error && e.message ? e.message : '评分失败，重试。';

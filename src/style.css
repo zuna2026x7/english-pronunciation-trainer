@@ -31,6 +31,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Pi
 .def{color:#64748b;margin:6px 0;font-size:14px;line-height:1.6}
 .play-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;justify-content:center}
 .rec-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.log-row{display:flex;justify-content:center;margin-top:10px}
 #myAudio{width:100%;margin-top:12px}
 .result{margin-top:18px;border-top:1px solid #f1f5f9;padding-top:16px}
 .score-row{display:flex;gap:16px;align-items:center}
