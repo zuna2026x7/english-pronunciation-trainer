@@ -66,7 +66,7 @@ npm run build
 npm install
 bash scripts/prepare-capacitor.sh   # 构建网页 + 同步 + 下载 Whisper 模型进 APK assets（约 44MB，不进 git）
 cd android && ./gradlew assembleDebug
-# APK：android/app/build/outputs/apk/debug/app-debug.apk（约 65–70MB：模型 44MB + ONNX Runtime WASM 21MB + 网页/词表约 2MB）
+# APK：android/app/build/outputs/apk/debug/app-debug.apk（实测 37MB：模型 44MB + ONNX Runtime WASM 21MB + 网页/词表约 2MB，APK 内 assets 经压缩后共约 37MB）
 ```
 
 也可以直接推到 `offline-4500` 分支，GitHub Actions（`.github/workflows/android.yml`）会自动构建并上传
