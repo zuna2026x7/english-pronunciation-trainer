@@ -72,11 +72,11 @@ export async function transcribePCM(pcm: Float32Array, onProgress?: ProgressCb):
     throw e;
   }
   if (onProgress) onProgress('识别中');
+  // 英文专用模型（whisper-tiny.en）不接受 language/task 参数，传入会报
+  // “Cannot specify `task` or `language` for an English-only model”。不传即可。
   const out = await pipe(pcm, {
     chunk_length_s: 30,
     stride_length_s: 5,
-    language: 'english',
-    task: 'transcribe',
   });
   const text: string = typeof out?.text === 'string' ? out.text : '';
   return text.trim().toLowerCase().replace(/[^a-z' -]+/g, ' ').replace(/\s+/g, ' ').trim();
