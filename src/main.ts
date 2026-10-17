@@ -1,10 +1,11 @@
-import { fetchWord, fetchPhoneticFor, fetchWikimediaAudio, type WordInfo } from './dictionary';
+import { fetchWord, fetchPhoneticFor, fetchWikimediaAudio, pickUsPhonetic, fetchUsPhonetic, type WordInfo } from './dictionary';
 import { playAtRate, SPEEDS } from './audio';
 import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
 import { transcribePCM, warmupModel } from './whisper';
 import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describeOp } from './ipa';
 import { lookupLocal, speakTTS } from './offline';
 import { initLogger, log, setState, uploadLogs } from './logger';
+import { getIpaType, setIpaType } from './settings';
 
 initLogger();
 
@@ -32,7 +33,12 @@ const playNormal = $('playNormal');
 const practiceCard = $('practiceCard');
 const recBtn = $('recBtn');
 const playMineBtn = $('playMineBtn');
-const logBtn = $('logBtn');
+const settingsBtn = $('settingsBtn');
+const settingsCard = $('settingsCard');
+const ipaUkBtn = $('ipaUkBtn');
+const ipaUsBtn = $('ipaUsBtn');
+const settingsLogBtn = $('settingsLogBtn');
+const settingsStatus = $('settingsStatus');
 const myAudio = $('myAudio') as HTMLAudioElement;
 const recStatus = $('recStatus');
 const modelStatus = $('modelStatus');
@@ -46,6 +52,7 @@ const errorList = $('errorList');
 const fallbackNote = $('fallbackNote');
 
 let current: WordInfo | null = null;
+let ukPhonetic = ''; // 本次查词的英式音标（本地词表 p 字段 / 在线词典 phonetic），切回英式时用
 let recorder: Recorder | null = null;
 let myBlob: Blob | null = null;
 let myPcm: Float32Array | null = null;
@@ -85,6 +92,31 @@ function setPlayEnabled(enabled: boolean) {
   (playNormal as HTMLButtonElement).disabled = !enabled;
 }
 
+/** 美式模式：优先用本次查词已带回的 -us 音标，否则后台在线取；取不到保持英式。 */
+async function applyUsPhoneticIfNeeded(word: string): Promise<void> {
+  if (getIpaType() !== 'us' || !navigator.onLine) return;
+  const fromList =
+    current && current.word.toLowerCase() === word.toLowerCase()
+      ? pickUsPhonetic(current.allPhonetics || [])
+      : '';
+  if (fromList) {
+    if (current?.word.toLowerCase() === word.toLowerCase()) {
+      current.phonetic = fromList;
+      ipaText.textContent = fromList;
+    }
+    return;
+  }
+  try {
+    const us = await fetchUsPhonetic(word);
+    if (us && current?.word.toLowerCase() === word.toLowerCase()) {
+      current.phonetic = us;
+      ipaText.textContent = us;
+    }
+  } catch {
+    // 保持英式
+  }
+}
+
 async function lookup(word: string) {
   lookupStatus.textContent = '';
   lookupBtn.setAttribute('disabled', 'true');
@@ -98,7 +130,10 @@ async function lookup(word: string) {
     wordTitle.textContent = info.word;
     posBadge.textContent = info.pos || '';
     posBadge.style.display = info.pos ? '' : 'none';
+    ukPhonetic = info.phonetic || '';
     ipaText.textContent = info.phonetic || '—';
+    // 美式模式：后台升级美式音标（取不到保持英式，不动其他显示）
+    void applyUsPhoneticIfNeeded(info.word);
     defText.textContent = info.definition ? `${info.pos ? info.pos + ' · ' : ''}${info.definition}` : '';
     // 释义默认隐藏：用户只想看英文 + 听发音，翻译/释义点“释义”才显示
     defText.hidden = true;
@@ -312,9 +347,36 @@ recBtn.addEventListener('pointerup', endHold);
 recBtn.addEventListener('pointercancel', endHold);
 recBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
-logBtn.addEventListener('click', async () => {
+// 设置：⚙️ 开关设置卡片；音标类型切换后立即生效；日志按钮在设置页面里。
+function renderIpaButtons(): void {
+  const t = getIpaType();
+  ipaUkBtn.classList.toggle('selected', t === 'uk');
+  ipaUsBtn.classList.toggle('selected', t === 'us');
+}
+
+settingsBtn.addEventListener('click', () => {
+  settingsCard.hidden = !settingsCard.hidden;
+  renderIpaButtons();
+});
+
+ipaUkBtn.addEventListener('click', () => {
+  setIpaType('uk');
+  renderIpaButtons();
+  if (current) {
+    current.phonetic = ukPhonetic;
+    ipaText.textContent = ukPhonetic || '—';
+  }
+});
+
+ipaUsBtn.addEventListener('click', () => {
+  setIpaType('us');
+  renderIpaButtons();
+  if (current) void applyUsPhoneticIfNeeded(current.word);
+});
+
+settingsLogBtn.addEventListener('click', async () => {
   const ok = await uploadLogs();
-  recStatus.textContent = ok ? '日志已发送' : '日志发送失败';
+  settingsStatus.textContent = ok ? '日志已发送' : '日志发送失败';
 });
 
 playMineBtn.addEventListener('click', async () => {
@@ -368,9 +430,16 @@ async function runScore(): Promise<void> {
       userPhonemes.innerHTML = `<span>${recognizedWord}</span>`;
       errorList.innerHTML = wordMatch ? '<li>整词识别一致</li>' : `<li>识别为 “${recognizedWord}”，与目标 “${target}” 拼写有差异</li>`;
     } else {
-      // 识别词的音标：先查本地词包（离线可用），没有再走在线词典
-      const localRecog = await lookupLocal(recognizedWord);
-      const recogPhonetic = localRecog?.phonetic ?? (await fetchPhoneticFor(recognizedWord));
+      // 识别词的音标：美式模式先在线取 -us 音标，取不到回落英式；
+      // 英式：先查本地词包（离线可用），没有再走在线词典
+      let recogPhonetic = '';
+      if (getIpaType() === 'us' && navigator.onLine) {
+        recogPhonetic = await fetchUsPhonetic(recognizedWord);
+      }
+      if (!recogPhonetic) {
+        const localRecog = await lookupLocal(recognizedWord);
+        recogPhonetic = localRecog?.phonetic ?? (await fetchPhoneticFor(recognizedWord));
+      }
       const actualTokens = tokenizeIPA(recogPhonetic || '');
       if (actualTokens.length === 0) {
         const d = letterDistance(target, recognizedWord);

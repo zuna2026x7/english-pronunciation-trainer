@@ -14,7 +14,22 @@
     <main class="wrap">
       <header class="hero">
         <h1>🎙️ 发音</h1>
+        <button id="settingsBtn" class="settings-btn" aria-label="设置">⚙️</button>
       </header>
+
+      <section class="card settings-card" id="settingsCard" hidden>
+        <div class="settings-row">
+          <span class="settings-label">音标</span>
+          <div class="seg">
+            <button id="ipaUkBtn" class="btn seg-btn">英式</button>
+            <button id="ipaUsBtn" class="btn seg-btn">美式</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <button id="settingsLogBtn" class="btn small">📋 日志</button>
+        </div>
+        <p id="settingsStatus" class="status" aria-live="polite"></p>
+      </section>
 
       <section class="card search-card">
         <div class="search-row">
@@ -43,9 +58,6 @@
         <div class="rec-row">
           <button id="recBtn" class="btn danger hold-btn icon-btn" aria-label="按住录音">🎙️</button>
           <button id="playMineBtn" class="btn" hidden>▶ 回放</button>
-        </div>
-        <div class="log-row">
-          <button id="logBtn" class="btn small">📋 日志</button>
         </div>
         <audio id="myAudio" controls hidden></audio>
         <p id="recStatus" class="status" aria-live="polite"></p>

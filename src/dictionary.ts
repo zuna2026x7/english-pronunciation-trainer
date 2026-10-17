@@ -220,3 +220,47 @@ export async function fetchPhoneticFor(word: string): Promise<string> {
     return '';
   }
 }
+
+/** 从词典 phonetics 列表里挑美式音标：audio 文件名含 -us 的那条的 text（如 hello-us.mp3）。 */
+export function pickUsPhonetic(allPhonetics: { text?: string; audio?: string; sourceUrl?: string }[]): string {
+  if (!allPhonetics) return '';
+  const us = allPhonetics.find((p) => p.text && p.audio && /[-_]us\./i.test(p.audio));
+  if (us?.text) return us.text;
+  return '';
+}
+
+function wiktionaryBase(): string {
+  return isSelfHosted() ? `${appBase()}/api/wiktionary` : 'https://en.wiktionary.org';
+}
+
+/** 美式 IPA：优先 Free Dictionary 的 -us 音标，拿不到再解析 Wiktionary wikitext 里 a=US 的 IPA。
+ *  拿不到返回 ''，调用方回落英式 IPA（不报错、不空白）。 */
+export async function fetchUsPhonetic(raw: string): Promise<string> {
+  const word = raw.trim().toLowerCase();
+  if (!word) return '';
+  try {
+    const info = await fetchWord(word);
+    const us = pickUsPhonetic(info.allPhonetics);
+    if (us) return us;
+  } catch {
+    // 继续试 Wiktionary
+  }
+  try {
+    const r = await fetch(
+      `${wiktionaryBase()}/w/api.php?action=parse&page=${encodeURIComponent(word)}&prop=wikitext&format=json`,
+    );
+    if (!r.ok) return '';
+    const j = await r.json();
+    const wt: string = j?.parse?.wikitext?.['*'] ?? '';
+    const blocks = [...wt.matchAll(/\{\{IPA\|en\|([^}]*)\}\}/g)];
+    for (const b of blocks) {
+      const inner = b[1];
+      if (!/a=US|\|US\b/.test(inner)) continue;
+      const ipas = [...inner.matchAll(/\/[^/]+\//g)].map((m) => m[0]);
+      if (ipas.length) return ipas[ipas.length - 1];
+    }
+  } catch {
+    // 拿不到
+  }
+  return '';
+}

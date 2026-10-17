@@ -1,4 +1,4 @@
-// 诊断日志：捕获 console + 未捕获错误 + 关键状态，缓存在内存；点“📋 日志”上传到 /api/log。
+// 诊断日志：捕获 console + 未捕获错误 + 关键状态，缓存在内存；点“📋 日志”上传到 /api/log（Web）或 https://speak.benext.uk/api/log/（Capacitor）。
 // 不记密码/token 等敏感信息：上报前按 key 脱敏，单条截断。
 
 export interface LogEntry {
@@ -95,8 +95,17 @@ function deviceInfo(): Record<string, string> {
 }
 
 export async function uploadLogs(): Promise<boolean> {
+  // Capacitor App 跑在 https://localhost：相对路径 /api/log/ 会发到 https://localhost/api/log/，
+  // 根本到不了 speak.benext.uk。App 内用绝对地址，Web 端保持相对路径。
+  const isCapacitor =
+    typeof window !== 'undefined' &&
+    (!!(window as unknown as { Capacitor?: unknown }).Capacitor ||
+      (window.location.hostname === 'localhost' &&
+        window.location.protocol === 'https:' &&
+        !window.location.port));
+  const url = isCapacitor ? 'https://speak.benext.uk/api/log/' : '/api/log/';
   try {
-    const res = await fetch('/api/log/', {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
