@@ -94,7 +94,7 @@ function deviceInfo(): Record<string, string> {
   }
 }
 
-export async function uploadLogs(): Promise<boolean> {
+export async function uploadLogs(audioBlob?: Blob | null): Promise<boolean> {
   // Capacitor App 跑在 https://localhost：相对路径 /api/log/ 会发到 https://localhost/api/log/，
   // 根本到不了 speak.benext.uk。App 内用绝对地址，Web 端保持相对路径。
   const isCapacitor =
@@ -105,6 +105,15 @@ export async function uploadLogs(): Promise<boolean> {
         !window.location.port));
   const url = isCapacitor ? 'https://speak.benext.uk/api/log/' : '/api/log/';
   try {
+    // 附带最新一次录音（用户点“发送日志”时才传，供诊断用；不自动上传）。
+    let audio: { base64: string; mimeType: string } | undefined;
+    if (audioBlob && audioBlob.size > 0) {
+      const buf = await audioBlob.arrayBuffer();
+      let bin = '';
+      const bytes = new Uint8Array(buf);
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      audio = { base64: btoa(bin), mimeType: audioBlob.type || 'audio/webm' };
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -114,6 +123,7 @@ export async function uploadLogs(): Promise<boolean> {
         ts: Date.now(),
         deviceInfo: deviceInfo(),
         logs: entries,
+        ...(audio ? { audio } : {}),
       }),
     });
     return res.ok;

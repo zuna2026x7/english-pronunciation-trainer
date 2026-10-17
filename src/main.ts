@@ -417,7 +417,8 @@ ipaUsBtn.addEventListener('click', () => {
 });
 
 settingsLogBtn.addEventListener('click', async () => {
-  const ok = await uploadLogs();
+  // 附带最新一次录音（myBlob），供诊断用；没有录音则只发日志文本。
+  const ok = await uploadLogs(myBlob);
   settingsStatus.textContent = ok ? '日志已发送' : '日志发送失败';
 });
 
