@@ -4,7 +4,9 @@ import { Capacitor } from '@capacitor/core';
 import { log, setState } from './logger';
 
 /** App 端（Capacitor）：每次录音前通过原生桥接申请麦克风权限。
- *  网页端跳过；插件不存在（旧 APK）时直接放行，让 getUserMedia 去报错。 */
+ *  网页端跳过。关键：插件调用失败时不要抛错阻断——用户可能已在系统设置里
+ *  授予了权限，此时直接走 getUserMedia 即可成功；若系统权限确实未授予，
+ *  getUserMedia 会失败并记录明确错误。之前 throw 会导致“已授权仍提示无权限”。 */
 async function ensureMicPermission(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
@@ -12,8 +14,9 @@ async function ensureMicPermission(): Promise<void> {
     await plugin.requestMic();
     setState('mic', 'granted');
   } catch (e) {
-    setState('mic', `request failed: ${(e as Error)?.message || e}`);
-    throw e;
+    // 不抛错：放行到 getUserMedia，由它决定成败（错误会记录在日志里）
+    setState('mic', `plugin request failed (proceed to getUserMedia): ${(e as Error)?.message || e}`);
+    log('warn', `MicPermission.requestMic failed, proceeding to getUserMedia: ${(e as Error)?.message || e}`);
   }
 }
 
