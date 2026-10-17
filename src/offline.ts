@@ -34,7 +34,41 @@ async function loadPack(): Promise<Map<string, Entry> | null> {
   return packPromise;
 }
 
-/** 本地词表查找：找到返回 WordInfo（无真人音频，播放走 TTS），找不到返回 null。 */
+/** 本地真人音频：构建脚本 scripts/download-audio.py 下载的 Wiktionary/词典音频，
+ *  放 public/data/audio/<word>.ogg（.mp3/.wav 少数），manifest.json 记录哪些词有音频。
+ *  App 内查词时优先用本地音频（离线可用），本地没有再走在线/TTS 兜底。 */
+type AudioManifest = Record<string, string>;
+
+let audioManifest: AudioManifest | null = null;
+let audioManifestPromise: Promise<AudioManifest | null> | null = null;
+
+async function loadAudioManifest(): Promise<AudioManifest | null> {
+  if (audioManifest) return audioManifest;
+  if (!audioManifestPromise) {
+    audioManifestPromise = (async () => {
+      try {
+        const res = await fetch('./data/audio/manifest.json');
+        if (!res.ok) return null;
+        audioManifest = (await res.json()) as AudioManifest;
+        return audioManifest;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return audioManifestPromise;
+}
+
+/** 本地真人音频 URL：有则返回相对路径（如 ./data/audio/hello.ogg），无则返回 ''。 */
+export async function localAudioUrl(word: string): Promise<string> {
+  const w = word.trim().toLowerCase();
+  if (!w) return '';
+  const m = await loadAudioManifest();
+  const fn = m?.[w];
+  return fn ? `./data/audio/${fn}` : '';
+}
+
+/** 本地词表查找：找到返回 WordInfo（有本地真人音频则带 audio，无则播放走 TTS），找不到返回 null。 */
 export async function lookupLocal(raw: string): Promise<WordInfo | null> {
   const word = raw.trim().toLowerCase();
   if (!word) return null;
@@ -44,7 +78,7 @@ export async function lookupLocal(raw: string): Promise<WordInfo | null> {
   return {
     word: e.w,
     phonetic: e.p || '',
-    audio: '',
+    audio: await localAudioUrl(word),
     audioSourceUrl: '',
     pos: '',
     definition: e.d || '',

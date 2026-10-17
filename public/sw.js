@@ -4,6 +4,8 @@
  * - /models/ 与 .wasm/.onnx（模型文件，不可变）：cache-first，联网时后台更新缓存。
  * - 其它同源 GET（JS/CSS/词表/图片）：stale-while-revalidate。
  * - /api/（在线词典/音频反代）：不缓存，直接走网络（离线时由应用内本地词表 + TTS 兜底）。
+ * - /data/audio/（打包的真人语音）：不缓存。APK 内音频已是本地文件，SW 再缓存会重复占 200MB+ 存储；
+ *   网页版无音频文件，不缓存也不影响。App 通过 manifest.json 判断本地是否有音频。
  * - 只处理同源 GET；POST/跨域直接放行。
  */
 const CACHE = 'ept-offline-v1';
@@ -33,6 +35,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.includes('/api/')) return;
+  if (url.pathname.includes('/data/audio/')) return; // 打包真人语音：APK 内已是本地文件，SW 不重复缓存
 
   if (request.mode === 'navigate') {
     // 导航：联网优先，离线回退缓存

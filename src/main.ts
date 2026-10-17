@@ -117,8 +117,8 @@ async function lookup(word: string) {
       await loadRealAudio(info);
     }
     // 本地词无真人音频：有网时后台升级一次真人音频（只换音频，不动显示的音标/释义）。
-    // 离线/失败时保持 TTS，播放不受影响。
-    if (fromLocal && navigator.onLine) {
+    // 离线/失败时保持 TTS，播放不受影响。本地已有真人音频时不覆盖（本地的就是真人录音，且离线可用）。
+    if (fromLocal && !info.audio && navigator.onLine) {
       void (async () => {
         try {
           const online = await fetchWord(word);
@@ -193,6 +193,12 @@ async function playWithFallback(rate: number) {
   try {
     await playAtRate(refAudio, rate);
   } catch (e) {
+    // 本地音频文件缺失/损坏 -> 回落 TTS（用户仍能听到发音，不报错刷屏）
+    if (current && refAudio.src.includes('data/audio/')) {
+      refAudio.removeAttribute('src');
+      await speakTTS(current.word, rate);
+      return;
+    }
     // 主音频播放失败时，切到另一个源再试一次（若 error 监听未触发）
     if (current && !triedWikimediaFallback) {
       triedWikimediaFallback = true;

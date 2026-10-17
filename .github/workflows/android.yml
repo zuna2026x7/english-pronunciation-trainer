@@ -19,6 +19,23 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # 真人语音：4500 词约 100MB，CI 时下载进 public/data/audio/（不进 git），
+      # 构建时一并打进 APK。缓存避免每次全量重下（key 含词表 + 脚本哈希，任一变更则失效重下）。
+      - name: Cache pronunciation audio
+        uses: actions/cache@v4
+        with:
+          path: public/data/audio
+          key: audio-v1-${{ hashFiles('public/data/cet4.json', 'scripts/download-audio.py') }}
+          restore-keys: audio-v1-
+      - name: Download pronunciation audio (Wiktionary, ~100MB)
+        run: python3 scripts/download-audio.py
+      - name: Audio stats
+        run: |
+          COUNT=$(ls public/data/audio/*.ogg public/data/audio/*.mp3 public/data/audio/*.wav 2>/dev/null | wc -l)
+          echo "audio files: $COUNT"
+          du -sh public/data/audio
+          python3 -c "import json; r=json.load(open('public/data/audio/report.json')); print('with_audio:', r['with_audio'], 'no_audio:', len(r['no_audio']), 'failed:', len(r['failed']))"
+          test "$COUNT" -gt 0 || (echo "ERROR: no audio files downloaded" && exit 1)
       - run: npm run build
       - run: npx cap sync android
       - name: Download Whisper model into APK assets
@@ -49,7 +66,15 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
       - name: APK size
-        run: ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+          echo "== verify audio bundled in APK (fails if missing) =="
+          AUDIO_COUNT=$(unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -c "assets/public/data/audio/" || true)
+          echo "audio entries in APK: $AUDIO_COUNT"
+          test "$AUDIO_COUNT" -gt 0 || (echo "ERROR: no audio in APK" && exit 1)
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep "assets/public/data/audio/manifest.json" || (echo "ERROR: manifest missing in APK" && exit 1)
+          MODEL_COUNT=$(unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -c "assets/public/models/" || true)
+          echo "model entries in APK: $MODEL_COUNT"
       - uses: actions/upload-artifact@v4
         with:
           name: pronunciation-debug-apk

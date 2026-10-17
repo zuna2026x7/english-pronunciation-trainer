@@ -11,3 +11,7 @@ android/.idea/
 android/app/src/main/assets/public/
 # Whisper 模型由构建脚本下载进 APK assets（44MB），不进 git
 android/app/src/main/assets/public/models/
+# 打包的真人语音（4500 词，约 100MB）由构建脚本下载进 public/data/audio/，不进 git
+public/data/audio/
+# 本地测试的 APK，不进 git
+app-debug.apk
