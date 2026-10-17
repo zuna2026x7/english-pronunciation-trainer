@@ -6,8 +6,15 @@ import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describe
 import { lookupLocal, speakTTS } from './offline';
 import { initLogger, log, setState, uploadLogs } from './logger';
 import { getIpaType, setIpaType } from './settings';
+import { autoCheckAndApply, checkForUpdate, applyUpdate, getCurrentVersion, otaSupported } from './updater';
 
 initLogger();
+
+// 热更新：App 打开后后台静默检查（仅 Capacitor App，网页版跳过）。
+// 有新版则下载并应用，下次启动生效；失败静默，不阻塞启动、不打扰用户。
+if (otaSupported() && navigator.onLine) {
+  void autoCheckAndApply();
+}
 
 // Service Worker：缓存应用壳 + 词表 + 模型文件，首次联网加载后可离线用。
 // 注册失败（如 file:// 或旧浏览器）不影响正常使用。
@@ -38,6 +45,8 @@ const settingsCard = $('settingsCard');
 const ipaUkBtn = $('ipaUkBtn');
 const ipaUsBtn = $('ipaUsBtn');
 const settingsLogBtn = $('settingsLogBtn');
+const settingsUpdateBtn = $('settingsUpdateBtn');
+const settingsVersion = $('settingsVersion');
 const settingsStatus = $('settingsStatus');
 const myAudio = $('myAudio') as HTMLAudioElement;
 const recStatus = $('recStatus');
@@ -357,6 +366,40 @@ function renderIpaButtons(): void {
 settingsBtn.addEventListener('click', () => {
   settingsCard.hidden = !settingsCard.hidden;
   renderIpaButtons();
+  renderVersion();
+});
+
+// 版本显示：当前生效版（内置版与热更新版取较新者）
+function renderVersion(): void {
+  settingsVersion.textContent = `版本 ${getCurrentVersion() || '—'}`;
+}
+
+// 检查更新：手动点按；有新版则下载并应用，下次启动生效；不自动重启、不强制重启。
+settingsUpdateBtn.addEventListener('click', async () => {
+  if (!otaSupported()) {
+    settingsStatus.textContent = '当前版本已是最新';
+    return;
+  }
+  settingsStatus.textContent = '';
+  settingsUpdateBtn.setAttribute('disabled', 'true');
+  try {
+    const found = await checkForUpdate();
+    if (!found) {
+      settingsStatus.textContent = '已是最新';
+      return;
+    }
+    const n = await applyUpdate(found.manifest);
+    if (n > 0) {
+      settingsStatus.textContent = '已更新，下次启动生效';
+      renderVersion();
+    } else {
+      settingsStatus.textContent = '更新失败，稍后重试';
+    }
+  } catch {
+    settingsStatus.textContent = '检查失败，稍后重试';
+  } finally {
+    settingsUpdateBtn.removeAttribute('disabled');
+  }
 });
 
 ipaUkBtn.addEventListener('click', () => {

@@ -28,6 +28,10 @@
         <div class="settings-row">
           <button id="settingsLogBtn" class="btn small">📋 日志</button>
         </div>
+        <div class="settings-row">
+          <button id="settingsUpdateBtn" class="btn small">检查更新</button>
+          <span id="settingsVersion" class="settings-version"></span>
+        </div>
         <p id="settingsStatus" class="status" aria-live="polite"></p>
       </section>
 
@@ -83,5 +87,64 @@
 
     </main>
     <script type="module" src="/src/main.ts"></script>
+    <script>
+      // 热更新引导：必须放在入口 module 脚本之后（module 脚本延迟执行，
+      // 经典内联脚本先跑，才能在它执行前替换它）。Vite 构建时原样保留此脚本。
+      // 若 App 私有目录已有热更新版入口 JS/CSS（经 OTA 下载），用热更新版替换内置版；
+      // 否则保持内置版。任何异常都静默回落内置版，绝不白屏。
+      // __EptBundledVersion__ 由 vite.config.ts 在构建时替换为 APK 内置清单版本。
+      (function () {
+        try {
+          var cap = window.Capacitor;
+          if (!cap || !cap.convertFileSrc) return; // 非 Capacitor（网页版）：直接用内置版
+          var files = JSON.parse(localStorage.getItem('ept_ota_files') || '{}');
+          var applied = localStorage.getItem('ept_ota_version') || '';
+          var bundled = '__EptBundledVersion__';
+          if (!applied || !bundled || bundled === '0.0.0') return;
+          // 只有热更新版 >= 内置版时才启用；新 APK 内置版更新时忽略旧热更新
+          if (compareVersions(applied, bundled) < 0) return;
+          var jsEntry = null;
+          var cssEntry = null;
+          for (var k in files) {
+            if (!files[k] || !files[k].uri) continue;
+            if (files[k].role === 'entry-js') jsEntry = files[k];
+            if (files[k].role === 'entry-css') cssEntry = files[k];
+          }
+          // 入口 CSS：换 href（无加载失败回落需求，CSS 失败只影响样式）
+          if (cssEntry) {
+            var link = document.querySelector('link[rel="stylesheet"]');
+            if (link) link.href = cap.convertFileSrc(cssEntry.uri);
+          }
+          // 入口 JS：移除内置脚本，注入热更新脚本；加载失败时回落内置版
+          if (jsEntry) {
+            var mod = document.querySelector('script[type="module"]');
+            if (mod) {
+              var builtInSrc = mod.getAttribute('src');
+              var ota = document.createElement('script');
+              ota.type = 'module';
+              ota.src = cap.convertFileSrc(jsEntry.uri);
+              ota.onerror = function () {
+                var fb = document.createElement('script');
+                fb.type = 'module';
+                if (builtInSrc) fb.src = builtInSrc;
+                document.head.appendChild(fb);
+              };
+              mod.remove();
+              document.head.appendChild(ota);
+            }
+          }
+        } catch (e) { /* 回落内置版 */ }
+        function compareVersions(a, b) {
+          var pa = String(a).split('.').map(function (x) { return parseInt(x, 10) || 0; });
+          var pb = String(b).split('.').map(function (x) { return parseInt(x, 10) || 0; });
+          var n = Math.max(pa.length, pb.length);
+          for (var i = 0; i < n; i++) {
+            var d = (pa[i] || 0) - (pb[i] || 0);
+            if (d !== 0) return d;
+          }
+          return 0;
+        }
+      })();
+    </script>
   </body>
 </html>

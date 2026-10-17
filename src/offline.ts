@@ -5,6 +5,7 @@
 // 查不到的词返回 null，调用方走现有在线词典/Wiktionary 兜底。
 
 import type { WordInfo } from './dictionary';
+import { getOtaText, getOtaFileUrl, isOtaActive } from './updater';
 
 type Entry = { w: string; p: string; d: string };
 
@@ -16,10 +17,17 @@ async function loadPack(): Promise<Map<string, Entry> | null> {
   if (!packPromise) {
     packPromise = (async () => {
       try {
-        // 相对路径：根路径 / 与旧 /pronunciation/ 子路径、Capacitor 的 https://localhost 都能用
-        const res = await fetch('./data/cet4.json');
-        if (!res.ok) return null;
-        const list = (await res.json()) as Entry[];
+        // 热更新版优先：App 私有目录里有新版词表时用它，否则用 APK 内置版
+        const ota = await getOtaText('data/cet4.json');
+        const list = ota
+          ? (JSON.parse(ota) as Entry[])
+          : await (async () => {
+              // 相对路径：根路径 / 与旧 /pronunciation/ 子路径、Capacitor 的 https://localhost 都能用
+              const res = await fetch('./data/cet4.json');
+              if (!res.ok) return null;
+              return (await res.json()) as Entry[];
+            })();
+        if (!list) return null;
         const m = new Map<string, Entry>();
         for (const e of list) {
           if (e?.w) m.set(e.w.toLowerCase(), e);
@@ -47,6 +55,12 @@ async function loadAudioManifest(): Promise<AudioManifest | null> {
   if (!audioManifestPromise) {
     audioManifestPromise = (async () => {
       try {
+        // 热更新版 manifest 优先（新词/新音频随热更新下发），否则用 APK 内置版
+        const ota = await getOtaText('data/audio/manifest.json');
+        if (ota) {
+          audioManifest = JSON.parse(ota) as AudioManifest;
+          return audioManifest;
+        }
         const res = await fetch('./data/audio/manifest.json');
         if (!res.ok) return null;
         audioManifest = (await res.json()) as AudioManifest;
@@ -59,13 +73,19 @@ async function loadAudioManifest(): Promise<AudioManifest | null> {
   return audioManifestPromise;
 }
 
-/** 本地真人音频 URL：有则返回相对路径（如 ./data/audio/hello.ogg），无则返回 ''。 */
+/** 本地真人音频 URL：热更新版优先（App 私有目录），否则 APK 内置版相对路径；无则返回 ''。 */
 export async function localAudioUrl(word: string): Promise<string> {
   const w = word.trim().toLowerCase();
   if (!w) return '';
   const m = await loadAudioManifest();
   const fn = m?.[w];
-  return fn ? `./data/audio/${fn}` : '';
+  if (!fn) return '';
+  // 音频文件本身可能随热更新下发：热更新版存在时用它（经 convertFileSrc 的可加载 URL）
+  if (isOtaActive()) {
+    const otaUrl = getOtaFileUrl(`data/audio/${fn}`);
+    if (otaUrl) return otaUrl;
+  }
+  return `./data/audio/${fn}`;
 }
 
 /** 本地词表查找：找到返回 WordInfo（有本地真人音频则带 audio，无则播放走 TTS），找不到返回 null。 */

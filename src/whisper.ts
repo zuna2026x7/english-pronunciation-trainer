@@ -1,5 +1,10 @@
 // 本地语音识别：Xenova/whisper-tiny.en via @huggingface/transformers v3（ONNX，浏览器本地跑）。
 // 明确不用 Web Speech API（Chrome 里走 Google）、不用 Google Cloud Speech。
+// 注意：transformers 用静态 import（不要动态 import），让 Vite 打成单个 JS 入口。
+// 热更新时入口 JS 从 App 私有目录加载，若仍是动态 import，相对路径的 chunk
+// （transformers.web-*.js）会在热更新目录里 404，模型加载失败。静态 import 后入口 JS 自包含。
+
+import { pipeline, env } from '@huggingface/transformers';
 
 let pipePromise: Promise<any> | null = null;
 
@@ -11,8 +16,7 @@ export type ProgressCb = (msg: string) => void;
 function getPipeline(onProgress?: ProgressCb) {
   if (!pipePromise) {
     pipePromise = (async () => {
-      const mod: any = await import('@huggingface/transformers');
-      const { pipeline, env } = mod;
+      // pipeline / env 直接用顶部的静态 import（单文件 bundle，热更新安全）
       // 自有服务器：模型走同源 /models/（speak 根路径部署）或 /pronunciation/models/（旧子路径部署），避免直连 huggingface.co 被挡。
       // GitHub Pages 等外站：仍走默认 Hugging Face。
       // Capacitor App：跑在 https://localhost，模型由 APK 内 assets/public/models/ 提供，
@@ -41,7 +45,7 @@ function getPipeline(onProgress?: ProgressCb) {
       env.allowLocalModels = false;
       env.allowRemoteModels = true;
       if (onProgress) onProgress('加载模型');
-      const pipe = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
+      const pipe = await (pipeline as any)('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
         quantized: true,
         progress_callback: (p: any) => {
           if (!onProgress) return;

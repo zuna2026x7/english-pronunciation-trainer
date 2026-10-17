@@ -36,6 +36,9 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.includes('/api/')) return;
   if (url.pathname.includes('/data/audio/')) return; // 打包真人语音：APK 内已是本地文件，SW 不重复缓存
+  // 热更新文件（Capacitor convertFileSrc 的 /_capacitor_file_/ URL）：由原生层直接供文件，
+  // SW 绝不拦截/缓存，否则同路径的新版热更新会被 SW 缓存的旧版遮挡。
+  if (url.pathname.startsWith('/_capacitor_file_/')) return;
 
   if (request.mode === 'navigate') {
     // 导航：联网优先，离线回退缓存

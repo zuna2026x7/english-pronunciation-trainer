@@ -14,3 +14,4 @@ android/app/src/main/assets/public/models/
 # 真人语音音频进 git（用户要求：跳板机下载完提交到 git，CI 直接用现成音频）
 # 本地测试的 APK，不进 git
 app-debug.apk
+ota-publish/
