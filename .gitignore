@@ -2,3 +2,12 @@ node_modules/
 dist/
 .DS_Store
 tsconfig.tsbuildinfo
+# Capacitor Android 生成物（cap sync / gradle 重新生成，不进 git）
+android/app/build/
+android/.gradle/
+android/local.properties
+android/*.iml
+android/.idea/
+android/app/src/main/assets/public/
+# Whisper 模型由构建脚本下载进 APK assets（44MB），不进 git
+android/app/src/main/assets/public/models/

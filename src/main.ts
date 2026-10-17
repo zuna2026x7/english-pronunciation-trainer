@@ -3,6 +3,15 @@ import { playAtRate, SPEEDS } from './audio';
 import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
 import { transcribePCM, warmupModel } from './whisper';
 import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describeOp } from './ipa';
+import { lookupLocal, speakTTS } from './offline';
+
+// Service Worker：缓存应用壳 + 词表 + 模型文件，首次联网加载后可离线用。
+// 注册失败（如 file:// 或旧浏览器）不影响正常使用。
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -76,7 +85,10 @@ async function lookup(word: string) {
   lookupStatus.textContent = '';
   lookupBtn.setAttribute('disabled', 'true');
   try {
-    const info = await fetchWord(word);
+    // 离线优先：先查本地 4500 词包（离线可用）；本地没有再走在线词典/Wiktionary 兜底。
+    const local = await lookupLocal(word);
+    const fromLocal = !!local;
+    const info = local ?? (await fetchWord(word));
     current = info;
     wordTitle.textContent = info.word;
     posBadge.textContent = info.pos || '';
@@ -97,38 +109,30 @@ async function lookup(word: string) {
     myPcm = null;
     playMineBtn.hidden = true;
     myAudio.hidden = true;
+    refAudio.removeAttribute('src');
+    triedWikimediaFallback = false;
+    // 播放按钮始终可用：有真人音频播真人音频，没有则 TTS 兜底。
+    setPlayEnabled(true);
     if (info.audio || info.audioSourceUrl) {
-      // 音频优先走 Wikimedia：词典 /media/*.mp3 目前 522 且要等约 20 秒才失败，
-      // 用户点播放会长时间没声。Wikimedia Commons 实测快且可用，有 sourceUrl 时优先用它，
-      // 失败则回落到词典音频（error 监听会再兜底一次）。
-      let audioSrc = info.audio;
-      let wmUsed = false;
-      if (info.audioSourceUrl) {
+      await loadRealAudio(info);
+    }
+    // 本地词无真人音频：有网时后台升级一次真人音频（只换音频，不动显示的音标/释义）。
+    // 离线/失败时保持 TTS，播放不受影响。
+    if (fromLocal && navigator.onLine) {
+      void (async () => {
         try {
-          const wm = await Promise.race([
-            fetchWikimediaAudio(info.audioSourceUrl),
-            new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
-          ]);
-          audioSrc = wm;
-          wmUsed = true;
+          const online = await fetchWord(word);
+          if (
+            current?.word.toLowerCase() === online.word.toLowerCase() &&
+            (online.audio || online.audioSourceUrl)
+          ) {
+            current = { ...current, audio: online.audio, audioSourceUrl: online.audioSourceUrl, allPhonetics: online.allPhonetics };
+            await loadRealAudio(current, true);
+          }
         } catch {
-          // 保持词典音频为主，播放失败时 error 监听会再试 Wikimedia
+          // 保持 TTS
         }
-      }
-      triedWikimediaFallback = wmUsed;
-      if (audioSrc) {
-        refAudio.src = audioSrc;
-        setPlayEnabled(true);
-        lookupStatus.textContent = '';
-      } else {
-        refAudio.removeAttribute('src');
-        setPlayEnabled(false);
-        lookupStatus.textContent = '无音频，可录音评分。';
-      }
-    } else {
-      refAudio.removeAttribute('src');
-      setPlayEnabled(false);
-      lookupStatus.textContent = '无音频，可录音评分。';
+      })();
     }
     // 后台预热识别模型，评分时更快
     warmupModel((m) => (modelStatus.textContent = m));
@@ -137,6 +141,36 @@ async function lookup(word: string) {
     lookupStatus.textContent = '没找到，检查拼写。';
   } finally {
     lookupBtn.removeAttribute('disabled');
+  }
+}
+
+/** 真人音频：Wikimedia 优先（词典 /media/*.mp3 曾 522 超时），失败则回落词典音频。
+ *  silentNoAudio=true 时无音频不写状态文案（用于本地词后台升级音频时不打扰）。 */
+async function loadRealAudio(info: WordInfo, silentNoAudio = false): Promise<void> {
+  // 音频优先走 Wikimedia：词典 /media/*.mp3 目前 522 且要等约 20 秒才失败，
+  // 用户点播放会长时间没声。Wikimedia Commons 实测快且可用，有 sourceUrl 时优先用它，
+  // 失败则回落到词典音频（error 监听会再兜底一次）。
+  let audioSrc = info.audio;
+  let wmUsed = false;
+  if (info.audioSourceUrl) {
+    try {
+      const wm = await Promise.race([
+        fetchWikimediaAudio(info.audioSourceUrl),
+        new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
+      ]);
+      audioSrc = wm;
+      wmUsed = true;
+    } catch {
+      // 保持词典音频为主，播放失败时 error 监听会再试 Wikimedia
+    }
+  }
+  triedWikimediaFallback = wmUsed;
+  if (audioSrc) {
+    refAudio.src = audioSrc;
+    lookupStatus.textContent = '';
+  } else if (!silentNoAudio) {
+    refAudio.removeAttribute('src');
+    lookupStatus.textContent = '';
   }
 }
 
@@ -150,6 +184,12 @@ defToggleBtn.addEventListener('click', () => {
 });
 
 async function playWithFallback(rate: number) {
+  // 无真人音频（本地词 / 离线）-> TTS 播放；有真人音频 -> 现有逻辑。
+  if (!refAudio.src) {
+    if (!current) throw new Error('无单词');
+    await speakTTS(current.word, rate);
+    return;
+  }
   try {
     await playAtRate(refAudio, rate);
   } catch (e) {
@@ -310,7 +350,9 @@ async function runScore(): Promise<void> {
       userPhonemes.innerHTML = `<span>${recognizedWord}</span>`;
       errorList.innerHTML = wordMatch ? '<li>整词识别一致</li>' : `<li>识别为 “${recognizedWord}”，与目标 “${target}” 拼写有差异</li>`;
     } else {
-      const recogPhonetic = await fetchPhoneticFor(recognizedWord);
+      // 识别词的音标：先查本地词包（离线可用），没有再走在线词典
+      const localRecog = await lookupLocal(recognizedWord);
+      const recogPhonetic = localRecog?.phonetic ?? (await fetchPhoneticFor(recognizedWord));
       const actualTokens = tokenizeIPA(recogPhonetic || '');
       if (actualTokens.length === 0) {
         const d = letterDistance(target, recognizedWord);

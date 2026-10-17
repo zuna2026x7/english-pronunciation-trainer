@@ -1,9 +1,12 @@
 {
   "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
     "@huggingface/transformers": "^3.7.0"
   },
   "description": "English pronunciation trainer: play correct pronunciation at 3 speeds, record and score your reading with IPA phoneme feedback. No Google packages.",
   "devDependencies": {
+    "@capacitor/cli": "^7.6.9",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
   },
@@ -12,7 +15,11 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "android:prepare": "bash scripts/prepare-capacitor.sh",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "build:cet4": "python3 scripts/build-cet4.py"
   },
   "type": "module",
   "version": "1.0.0"

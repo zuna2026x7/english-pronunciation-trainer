@@ -15,16 +15,26 @@ function getPipeline(onProgress?: ProgressCb) {
       const { pipeline, env } = mod;
       // 自有服务器：模型走同源 /models/（speak 根路径部署）或 /pronunciation/models/（旧子路径部署），避免直连 huggingface.co 被挡。
       // GitHub Pages 等外站：仍走默认 Hugging Face。
+      // Capacitor App：跑在 https://localhost，模型由 APK 内 assets/public/models/ 提供，
+      // 同样走同源 /models/，安装后无需联网即可评分。
       // 注意：transformers.js 用 remoteHost + remotePathTemplate 拼 URL，
       // 自有服务器上的目录结构需为 <models>/Xenova/whisper-tiny.en/resolve/main/<file>。
+      const isCapacitor =
+        typeof window !== 'undefined' &&
+        (!!(window as any).Capacitor ||
+          // Capacitor 跑在 https://localhost（无端口）；vite dev 是 http://localhost:5173，不算
+          (window.location.hostname === 'localhost' &&
+            window.location.protocol === 'https:' &&
+            !window.location.port));
       const isSelfHosted =
         typeof window !== 'undefined' &&
         (window.location.hostname === '198.200.49.120' ||
           /\.benext\.uk$/.test(window.location.hostname) ||
           /\.chuangkai\.cloud$/.test(window.location.hostname) ||
           window.location.pathname.startsWith('/pronunciation/'));
-      if (isSelfHosted) {
-        const base = window.location.pathname.startsWith('/pronunciation/') ? '/pronunciation' : '';
+      if (isSelfHosted || isCapacitor) {
+        const base =
+          !isCapacitor && window.location.pathname.startsWith('/pronunciation/') ? '/pronunciation' : '';
         env.remoteHost = `${window.location.origin}${base}/models`;
       }
       // 允许从远程拉模型，禁用本地模型路径（浏览器无本地文件）

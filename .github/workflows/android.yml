@@ -1,0 +1,52 @@
+name: Build Android APK
+
+# 只在 offline-4500 分支跑，不影响 main 分支的 Pages 部署。
+on:
+  push:
+    branches: [offline-4500]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Download Whisper model into APK assets
+        run: |
+          MODEL_SRC="https://huggingface.co/Xenova/whisper-tiny.en/resolve/main"
+          DEST="android/app/src/main/assets/public/models/Xenova/whisper-tiny.en/resolve/main"
+          mkdir -p "$DEST/onnx"
+          for f in config.json generation_config.json preprocessor_config.json \
+            tokenizer.json tokenizer_config.json vocab.json merges.txt \
+            special_tokens_map.json added_tokens.json normalizer.json quant_config.json \
+            onnx/encoder_model_quantized.onnx onnx/decoder_model_merged_quantized.onnx; do
+            echo "download: $f"
+            curl -fL --retry 2 -o "$DEST/$f" "$MODEL_SRC/$f"
+          done
+          du -sh "$DEST"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - name: APK size
+        run: ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pronunciation-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
