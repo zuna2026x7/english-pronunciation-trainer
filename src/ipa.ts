@@ -22,9 +22,15 @@ const ONE_CHAR = new Set([
 
 const SKIP = new Set(['/', '[', ']', '(', ')', 'ˈ', 'ˌ', '.', ' ', 'ˈ'.charCodeAt(0).toString(), '\u02c8', '\u02cc']);
 
+/** 统一音标写法：本地词包（ECDICT）用旧式 /wəːk/ 表示长元音 ɜː，在线词典是 /wɜːk/。
+ *  不统一时 'əː' 会被切成 'ə' 加一个被丢掉的 'ː'，芯片就显示成 ə，和标题音标对不上。 */
+export function normalizeIPA(raw: string): string {
+  return raw.replace(/əː/g, 'ɜː');
+}
+
 /** 把 /həˈloʊ/ 这样的 IPA 切成音素序列，忽略重音符号与斜杠。 */
 export function tokenizeIPA(raw: string): string[] {
-  const s = raw.replace(/[\/\\\[\]()]/g, '').replace(/[ˈˌ]/g, '');
+  const s = normalizeIPA(raw).replace(/[\/\\\[\]()]/g, '').replace(/[ˈˌ]/g, '');
   const out: string[] = [];
   let i = 0;
   while (i < s.length) {

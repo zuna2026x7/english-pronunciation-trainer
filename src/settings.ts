@@ -19,3 +19,22 @@ export function setIpaType(t: IpaType): void {
     // ignore
   }
 }
+
+// 释义展开状态：记住用户上次是展开还是收起，默认收起。
+const DEF_OPEN_KEY = 'ept_def_open';
+
+export function getDefOpen(): boolean {
+  try {
+    return localStorage.getItem(DEF_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setDefOpen(open: boolean): void {
+  try {
+    localStorage.setItem(DEF_OPEN_KEY, open ? '1' : '0');
+  } catch {
+    // ignore
+  }
+}

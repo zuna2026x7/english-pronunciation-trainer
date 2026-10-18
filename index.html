@@ -2,20 +2,25 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content="输入单词，听读音，跟读打分。" />
     <title>发音</title>
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='34' y='8' width='32' height='54' rx='16' fill='%232563eb'/><path d='M18 46a32 32 0 0 0 64 0M50 80v12' fill='none' stroke='%232563eb' stroke-width='8' stroke-linecap='round'/></svg>" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <main class="wrap">
-      <header class="hero">
-        <h1>🎙️ 发音</h1>
-        <button id="settingsBtn" class="settings-btn" aria-label="设置">⚙️</button>
+    <main class="wrap has-bottombar">
+      <header class="hero topbar">
+        <label class="topbar-search">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="wordInput" type="search" enterkeyhint="search" placeholder="输入单词，如 thought" autocomplete="off" spellcheck="false" />
+          <button id="lookupBtn" class="visually-hidden">查</button>
+        </label>
+        <button id="settingsBtn" class="settings-btn icon-square" aria-label="设置"></button>
       </header>
+      <p id="lookupStatus" class="status" aria-live="polite"></p>
 
       <section class="card settings-card settings-float" id="settingsCard" hidden>
         <div class="settings-row">
@@ -26,7 +31,7 @@
           </div>
         </div>
         <div class="settings-row">
-          <button id="settingsLogBtn" class="btn small">📋 日志</button>
+          <button id="settingsLogBtn" class="btn small">日志</button>
         </div>
         <div class="settings-row">
           <button id="settingsUpdateBtn" class="btn small">检查更新</button>
@@ -35,34 +40,21 @@
         <p id="settingsStatus" class="status" aria-live="polite"></p>
       </section>
 
-      <section class="card search-card">
-        <div class="search-row">
-          <input id="wordInput" type="text" placeholder="输入单词，如 thought" autocomplete="off" spellcheck="false" />
-          <button id="lookupBtn" class="btn primary">查</button>
-        </div>
-        <p id="lookupStatus" class="status" aria-live="polite"></p>
-      </section>
-
       <section class="card" id="wordCard" hidden>
         <div class="word-head">
           <h2 id="wordTitle">—</h2>
           <span id="posBadge" class="badge"></span>
         </div>
-        <p class="ipa" id="ipaText">—</p>
-        <button id="defToggleBtn" class="def-toggle" hidden>释义 ▾</button>
-        <p class="def" id="defText" hidden></p>
-
-        <div class="play-row">
-          <button id="playNormal" class="btn play icon-btn" aria-label="播放">🔊</button>
+        <div class="ipa-row">
+          <div class="ipa-left"><span id="ipaAccent" class="ipa-accent">英</span><p class="ipa" id="ipaText">—</p></div>
+          <button id="playNormal" class="speaker-btn" aria-label="播放"></button>
         </div>
+        <button id="defToggleBtn" class="def-toggle pill" hidden>释义</button>
+        <p class="def" id="defText" hidden></p>
         <audio id="refAudio" preload="auto" playsinline></audio>
       </section>
 
       <section class="card" id="practiceCard" hidden>
-        <div class="rec-row">
-          <button id="recBtn" class="btn danger hold-btn icon-btn" aria-label="按住录音">🎙️</button>
-          <button id="playMineBtn" class="btn" hidden>▶ 回放</button>
-        </div>
         <p id="recStatus" class="status" aria-live="polite"></p>
         <p id="modelStatus" class="status muted"></p>
 
@@ -71,13 +63,13 @@
             <div class="score-circle"><span id="scoreNum">—</span><small>/ 100</small></div>
             <div>
               <p class="grade" id="gradeText"></p>
-              <p>识别为：<strong id="recognizedText">—</strong></p>
+              <p class="recog">识别为：<strong id="recognizedText">—</strong></p>
             </div>
           </div>
 
-          <div class="phon-row">
-            <div><span class="lbl">标准</span><div id="expectedPhonemes" class="phonemes"></div></div>
-            <div><span class="lbl">你的</span><div id="userPhonemes" class="phonemes"></div></div>
+          <div class="phon-col">
+            <span class="lbl">标准</span><div id="expectedPhonemes" class="phonemes"></div>
+            <span class="lbl">你的</span><div id="userPhonemes" class="phonemes"></div>
           </div>
           <ul id="errorList" class="errors"></ul>
           <p id="fallbackNote" class="status muted" hidden></p>
@@ -85,7 +77,10 @@
       </section>
 
     </main>
-    <footer class="app-footer">发音 <span id="footerVersion">1.9</span></footer>
+    <div class="bottombar" id="bottomBar">
+      <button id="playMineBtn" class="replay-btn" hidden>回放</button>
+      <button id="recBtn" class="rec-btn hold-btn" aria-label="按住录音">按住录音</button>
+    </div>
     <script type="module" src="/src/main.ts"></script>
     <script>
       // 热更新引导：必须放在入口 module 脚本之后（module 脚本延迟执行，
