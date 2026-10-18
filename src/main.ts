@@ -367,7 +367,7 @@ settingsBtn.addEventListener('click', () => {
 });
 
 // App 版本号（正式版号，随发布递增；设置页与页脚都显示，方便确认当前装的是哪版）。
-export const APP_VERSION = 'V9';
+export const APP_VERSION = '1.9';
 
 // 版本显示：正式版号 + 热更新版（内置版与热更新版取较新者）
 function renderVersion(): void {

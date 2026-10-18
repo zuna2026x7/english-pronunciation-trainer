@@ -27,7 +27,10 @@ export interface OtaManifest {
   files: OtaFile[];
 }
 
-const OTA_BASE = 'https://speak.benext.uk/updates';
+const OTA_BASE = 'https://speak.benext.uk/api/updates';
+// 注意：OTA 走 POST（/api/updates/*），不用 GET（/updates/*）。
+// Cloudflare 会剥掉 GET 响应的 CORS 头（App 在 https://localhost 跨域拉不到清单），
+// 但 POST 响应（同 /api/log/）的 CORS 头能透过 Cloudflare。
 const OTA_DIR = 'ota';
 const VER_KEY = 'ept_ota_version';
 const FILES_KEY = 'ept_ota_files';
@@ -159,7 +162,11 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 async function fetchManifest(): Promise<OtaManifest | null> {
   try {
-    const res = await fetch(`${OTA_BASE}/manifest.json`, { cache: 'no-store' });
+    const res = await fetch(`${OTA_BASE}/manifest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
     if (!res.ok) return null;
     const j = (await res.json()) as OtaManifest;
     if (!j || typeof j.version !== 'string' || !Array.isArray(j.files)) return null;
@@ -206,14 +213,23 @@ export async function applyUpdate(manifest: OtaManifest): Promise<number> {
       continue;
     }
     try {
-      const res = await fetch(`${OTA_BASE}/${f.path}`, { cache: 'no-store' });
+      // 文件经 POST 取回 base64（同清单，走 /api/updates，绕过 Cloudflare 对 GET 的 CORS 剥离）。
+      const res = await fetch(`${OTA_BASE}/file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: f.path }),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      if (f.size > 0 && blob.size !== f.size) throw new Error('size 不匹配');
-      const buf = await blob.arrayBuffer();
+      const j = (await res.json()) as { base64?: string; size?: number };
+      if (!j || typeof j.base64 !== 'string') throw new Error('bad file response');
+      const bin = atob(j.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const buf = bytes.buffer as ArrayBuffer;
+      if (f.size > 0 && buf.byteLength !== f.size) throw new Error('size 不匹配');
       const hash = await sha256Hex(buf);
       if (hash !== f.sha256.toLowerCase()) throw new Error('sha256 不匹配');
-      const base64 = await blobToBase64(blob);
+      const base64 = j.base64;
       await Filesystem.writeFile({
         directory: Directory.Data,
         path: `${OTA_DIR}/${f.path}`,
