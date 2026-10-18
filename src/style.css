@@ -91,6 +91,14 @@ body{background:#f6f7fb}
 /* 释义：蓝色胶囊，可折叠 */
 .def-toggle.pill{display:inline-flex;align-items:center;gap:4px;height:36px;margin-top:12px;padding:0 14px;border-radius:18px;background:#eff6ff;color:#2563eb;font-size:15px;font-weight:600}
 .def{color:#334155;font-size:15px}
+/* 评分区：浅灰底圆角卡片，与上方的状态文案分开；内部滚动时滚动条在卡片内 */
+#result{background:#f8fafc;border-radius:16px;padding:16px;margin-top:12px}
+#result .score-row{margin-bottom:4px}
+#result .lbl{font-size:14px;color:#334155;margin:18px 0 10px}
+#result .lbl:first-child{margin-top:0}
+/* 反馈块：白底圆角，与音素区区分；全对时绿底 */
+#result .errors{background:#fff;border:1px solid #eef2f7;border-radius:12px;padding:12px 14px;margin-top:18px;line-height:1.8}
+#result .errors:has(li.all-ok){background:#f0fdf4;border-color:#dcfce7}
 /* 分数环 */
 .score-ring{position:relative;width:96px;height:96px;flex:none}
 .score-ring svg{display:block}
