@@ -13,10 +13,10 @@
 
 可热更新的文件（其余随 APK 走，不进清单）：
 - dist/assets/*.js、dist/assets/*.css（入口 JS/CSS；入口 JS 是单文件 bundle，无动态 chunk）
+- dist/index.html（入口 HTML；引导脚本若发现 OTA 版 index.html，会重定向到它再加载）
 - dist/data/cet4.json、dist/data/audio/manifest.json
 - dist/data/audio/*.{ogg,mp3,wav}（新增/变更的音频）
-不含：index.html（引导脚本寄生在它上面）、sw.js、manifest.webmanifest、
-模型 ONNX/WASM（随 APK 走）。
+不含：sw.js、manifest.webmanifest、模型 ONNX/WASM（随 APK 走）。
 
 用法：
   # 首次：快照当前 dist 为基线（构建 APK 的那次 dist），提交 baseline 到 git
@@ -52,6 +52,8 @@ AUDIO_EXTS = (".ogg", ".mp3", ".wav")
 
 def is_ota_file(rel: str) -> bool:
     rel = rel.replace(os.sep, "/")
+    if rel == "index.html":
+        return True
     if rel.startswith(INCLUDE_JS_CSS) and (rel.endswith(".js") or rel.endswith(".css")):
         return True
     if rel in INCLUDE_DATA:
@@ -161,6 +163,8 @@ def main() -> int:
             entry["role"] = "entry-js"
         elif rel == entry_css:
             entry["role"] = "entry-css"
+        elif rel == "index.html":
+            entry["role"] = "entry-html"
         files.append(entry)
     # 暂存变更文件 + 清单
     if os.path.isdir(OUT):

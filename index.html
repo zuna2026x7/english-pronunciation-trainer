@@ -90,7 +90,7 @@
     <script>
       // 热更新引导：必须放在入口 module 脚本之后（module 脚本延迟执行，
       // 经典内联脚本先跑，才能在它执行前替换它）。Vite 构建时原样保留此脚本。
-      // 若 App 私有目录已有热更新版入口 JS/CSS（经 OTA 下载），用热更新版替换内置版；
+      // 若 App 私有目录已有热更新版入口 JS/CSS/HTML（经 OTA 下载），用热更新版替换内置版；
       // 否则保持内置版。任何异常都静默回落内置版，绝不白屏。
       // __EptBundledVersion__ 由 vite.config.ts 在构建时替换为 APK 内置清单版本。
       (function () {
@@ -103,6 +103,17 @@
           if (!applied || !bundled || bundled === '0.0.0') return;
           // 只有热更新版 >= 内置版时才启用；新 APK 内置版更新时忽略旧热更新
           if (compareVersions(applied, bundled) < 0) return;
+          // 入口 HTML：若有 OTA 版 index.html 且当前是内置页（非 OTA 文件），重定向到 OTA 版。
+          // OTA 版页内也会跑这段引导，但当前 URL 已是 OTA 文件（_capacitor_file_），不再重定向，避免循环。
+          var isOtaPage = window.location.href.indexOf('_capacitor_file_') !== -1;
+          if (!isOtaPage) {
+            for (var k in files) {
+              if (files[k] && files[k].uri && files[k].role === 'entry-html') {
+                window.location.href = cap.convertFileSrc(files[k].uri);
+                return;
+              }
+            }
+          }
           var jsEntry = null;
           var cssEntry = null;
           for (var k in files) {
