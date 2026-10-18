@@ -60,3 +60,69 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Pi
 /* 设置浮层：脱离文档流，浮在主窗口上方，不推挤布局；点遮罩（控件之外）自动收回 */
 .settings-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:40}
 .settings-float{position:fixed;left:50%;top:72px;transform:translateX(-50%);width:min(92vw,420px);z-index:50;margin-top:0;box-shadow:0 12px 32px rgba(15,23,42,.18)}
+
+/* ===== ui-redesign ===== */
+body{background:#f6f7fb}
+.wrap{padding:16px 16px 24px}
+.wrap.has-bottombar{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
+.visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
+/* 顶栏：搜索 + 右上设置 */
+.topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;background:#f6f7fb;padding:8px 0}
+.topbar-search{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:46px;padding:0 14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;color:#64748b;cursor:text}
+.topbar-search:focus-within{border-color:#2563eb}
+.topbar-search svg{flex:none}
+.topbar-search input{flex:1;min-width:0;border:0;outline:none;background:none;font-size:17px;color:#0f172a;padding:0;-webkit-appearance:none;appearance:none}
+.topbar-search input::-webkit-search-cancel-button{display:none}
+.icon-square{width:46px;height:46px;flex:none;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid #e2e8f0;border-radius:14px;color:#475569;padding:0;cursor:pointer}
+#lookupStatus:empty{display:none}
+.card{border:0;border-radius:20px;box-shadow:0 1px 2px rgba(15,23,42,.05);margin-top:12px}
+/* 单词 + 音标行 */
+.word-head h2{font-size:40px;font-weight:700;letter-spacing:-.5px}
+.ipa-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px}
+.ipa-left{display:flex;align-items:baseline;gap:6px;min-width:0}
+.ipa-accent{font-size:13px;font-weight:600;color:#64748b}
+.ipa-row .ipa{margin:0;font-size:24px;color:#334155;overflow-wrap:anywhere}
+.speaker-btn{width:48px;height:48px;flex:none;border:0;border-radius:50%;background:#eef2ff;color:#2563eb;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.speaker-btn:active{transform:scale(.95)}
+.speaker-btn:disabled{opacity:.4}
+/* 释义：蓝色胶囊，可折叠 */
+.def-toggle.pill{display:inline-flex;align-items:center;gap:4px;height:36px;margin-top:12px;padding:0 14px;border-radius:18px;background:#eff6ff;color:#2563eb;font-size:15px;font-weight:600}
+.def{color:#334155;font-size:15px}
+/* 分数环 */
+.score-ring{position:relative;width:96px;height:96px;flex:none}
+.score-ring svg{display:block}
+.ring-track{stroke:#e2e8f0}
+.ring-arc{stroke:#2563eb;transition:stroke-dasharray .5s ease}
+.ring-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+.ring-num b{font-size:30px;font-weight:800}
+.ring-num span{font-size:11px;color:#64748b;margin-top:4px}
+.score-ring[data-level=great] .ring-track{stroke:#dcfce7}.score-ring[data-level=great] .ring-arc{stroke:#16a34a}
+.score-ring[data-level=good] .ring-track{stroke:#dbeafe}.score-ring[data-level=good] .ring-arc{stroke:#2563eb}
+.score-ring[data-level=ok] .ring-track{stroke:#fef3c7}.score-ring[data-level=ok] .ring-arc{stroke:#d97706}
+.score-ring[data-level=low] .ring-track{stroke:#fee2e2}.score-ring[data-level=low] .ring-arc{stroke:#dc2626}
+.grade{font-size:22px;margin:0}
+.grade[data-level=great]{color:#16a34a}.grade[data-level=good]{color:#2563eb}.grade[data-level=ok]{color:#d97706}.grade[data-level=low]{color:#dc2626}
+.grade-sub{margin:4px 0 0;font-size:14px;color:#475569}
+.recog{margin:8px 0 0;font-size:14px;color:#475569}
+.recog strong{color:#0f172a}
+.result{border-top:0;margin-top:4px;padding-top:4px}
+/* 音素：上下排列 */
+.phon-row,.phon-col{display:block;margin-top:6px}
+.lbl{display:block;font-size:13px;font-weight:600;color:#475569;margin:16px 0 8px}
+.phonemes{gap:8px;margin-top:0}
+.phonemes span{min-width:44px;height:44px;padding:0 10px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;background:#f1f5f9}
+.phonemes span.ok{background:#dcfce7;color:#14532d}
+.phonemes span.bad{background:#fee2e2;color:#7f1d1d}
+.errors{list-style:none;padding:0;color:#92400e}
+.errors li.all-ok{color:#16a34a}
+#recStatus:empty,#modelStatus:empty{display:none}
+/* 底栏：回放 + 按住录音 */
+.bottombar{position:fixed;left:0;right:0;bottom:0;z-index:35;display:flex;align-items:center;gap:12px;padding:14px max(16px,calc((100vw - 640px)/2 + 16px)) calc(14px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #e2e8f0}
+.replay-btn{height:56px;flex:none;display:inline-flex;align-items:center;gap:6px;padding:0 20px;border:0;border-radius:28px;background:#f1f5f9;color:#0f172a;font-size:16px;cursor:pointer}
+.replay-btn[hidden]{display:none}
+.rec-btn{flex:1;height:56px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:28px;background:#2563eb;color:#fff;font-size:18px;font-weight:600;cursor:pointer}
+.rec-btn.recording{background:#dc2626;animation:rec-pulse-soft 1s ease-in-out infinite}
+@keyframes rec-pulse-soft{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
+.settings-float{top:76px}
+#settingsLogBtn{display:inline-flex;align-items:center;gap:6px}
+@media(max-width:560px){.word-head h2{font-size:36px}}

@@ -7,6 +7,8 @@ import { lookupLocal, speakTTS } from './offline';
 import { initLogger, log, setState, uploadLogs } from './logger';
 import { getIpaType, setIpaType } from './settings';
 import { autoCheckAndApply, checkForUpdate, applyUpdate, getCurrentVersion, otaSupported } from './updater';
+import { ensureLayout, setDefToggle, setReplayIcon, setAccentLabel, setScoreRing, setGrade } from './ui';
+import { normalizeIPA } from './ipa';
 
 initLogger();
 
@@ -23,6 +25,9 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   });
 }
+
+// 新布局：必须在下面按 id 取元素之前跑（它会替换分数环里的 #scoreNum 等节点）
+ensureLayout();
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -112,6 +117,7 @@ async function applyUsPhoneticIfNeeded(word: string): Promise<void> {
     if (current?.word.toLowerCase() === word.toLowerCase()) {
       current.phonetic = fromList;
       ipaText.textContent = fromList;
+      setAccentLabel('us');
     }
     return;
   }
@@ -120,6 +126,7 @@ async function applyUsPhoneticIfNeeded(word: string): Promise<void> {
     if (us && current?.word.toLowerCase() === word.toLowerCase()) {
       current.phonetic = us;
       ipaText.textContent = us;
+      setAccentLabel('us');
     }
   } catch {
     // 保持英式
@@ -139,8 +146,11 @@ async function lookup(word: string) {
     wordTitle.textContent = info.word;
     posBadge.textContent = info.pos || '';
     posBadge.style.display = info.pos ? '' : 'none';
-    ukPhonetic = info.phonetic || '';
+    // 本地词包是旧式写法（/wəːk/），统一成 /wɜːk/，标题音标和“标准”芯片用同一串
+    info.phonetic = normalizeIPA(info.phonetic || '');
+    ukPhonetic = info.phonetic;
     ipaText.textContent = info.phonetic || '—';
+    setAccentLabel('uk');
     // 美式模式：后台升级美式音标（取不到保持英式，不动其他显示）
     void applyUsPhoneticIfNeeded(info.word);
     defText.textContent = info.definition ? `${info.pos ? info.pos + ' · ' : ''}${info.definition}` : '';
@@ -149,14 +159,14 @@ async function lookup(word: string) {
     playSpeedIdx = 0;
     lastPlayTapAt = 0;
     defToggleBtn.hidden = !info.definition;
-    defToggleBtn.textContent = '释义 ▾';
+    setDefToggle(false);
     wordCard.hidden = false;
     practiceCard.hidden = false;
     resultEl.hidden = true;
     recStatus.textContent = '';
     myBlob = null;
     myPcm = null;
-    if (playbackSource) { try { playbackSource.stop(); } catch {} playbackSource = null; }
+    if (playbackSource) { try { playbackSource.stop(); } catch {} playbackSource = null; setReplayIcon(false); }
     playMineBtn.hidden = true;
     refAudio.removeAttribute('src');
     triedWikimediaFallback = false;
@@ -229,7 +239,7 @@ wordInput.addEventListener('keydown', (e) => {
 });
 defToggleBtn.addEventListener('click', () => {
   defText.hidden = !defText.hidden;
-  defToggleBtn.textContent = defText.hidden ? '释义 ▾' : '释义 ▴';
+  setDefToggle(!defText.hidden);
 });
 
 async function playWithFallback(rate: number) {
@@ -300,6 +310,8 @@ async function startHoldRecord(): Promise<boolean> {
   try {
     await startPromise;
     recBtn.classList.add('recording');
+    const recLabel = recBtn.querySelector('span');
+    if (recLabel) recLabel.textContent = '松开结束';
     recStatus.textContent = '录音中';
     // 不隐藏结果区：hidden 会让布局回流、页面跳动（“位置飘走”）。旧结果留着，新分数出来再覆盖。
     return true;
@@ -320,6 +332,7 @@ async function stopHoldRecordAndScore(): Promise<void> {
   }
   if (!recorder.isRecording) return;
   recBtn.classList.remove('recording');
+  resetRecLabel();
   try {
     const blob = await recorder.stop();
     myBlob = blob;
@@ -331,7 +344,13 @@ async function stopHoldRecordAndScore(): Promise<void> {
     recStatus.textContent = '停止失败，重试。';
   } finally {
     recBtn.classList.remove('recording');
+    resetRecLabel();
   }
+}
+
+function resetRecLabel(): void {
+  const recLabel = recBtn.querySelector('span');
+  if (recLabel) recLabel.textContent = '按住录音';
 }
 
 recBtn.addEventListener('pointerdown', (e) => {
@@ -395,7 +414,7 @@ settingsBtn.addEventListener('click', (e) => {
 settingsCard.addEventListener('click', (e) => e.stopPropagation());
 
 // App 版本号（正式版号，随发布递增；设置页与页脚都显示，方便确认当前装的是哪版）。
-export const APP_VERSION = '1.9';
+export const APP_VERSION = '2.0';
 
 // 版本显示：正式版号 + 热更新版（内置版与热更新版取较新者）
 function renderVersion(): void {
@@ -436,6 +455,7 @@ ipaUkBtn.addEventListener('click', () => {
   if (current) {
     current.phonetic = ukPhonetic;
     ipaText.textContent = ukPhonetic || '—';
+    setAccentLabel('uk');
   }
 });
 
@@ -456,7 +476,7 @@ playMineBtn.addEventListener('click', async () => {
   // MediaRecorder 的 WebM 头里没有 duration，<audio> 播它会失败（“回放失败”）。
   // decodeAudioData 不依赖 duration，能解就能播，和打分用同一路解码。
   try {
-    if (playbackSource) { try { playbackSource.stop(); } catch {} playbackSource = null; return; }
+    if (playbackSource) { try { playbackSource.stop(); } catch {} playbackSource = null; setReplayIcon(false); return; }
     if (!myBlob) return;
     const pcm = myPcm ?? (await blobToPCM16k(myBlob));
     myPcm = pcm;
@@ -467,8 +487,9 @@ playMineBtn.addEventListener('click', async () => {
     src.buffer = buf;
     src.connect(ctx.destination);
     playbackSource = src;
-    src.onended = () => { playbackSource = null; void ctx.close().catch(() => {}); };
+    src.onended = () => { playbackSource = null; setReplayIcon(false); void ctx.close().catch(() => {}); };
     src.start();
+    setReplayIcon(true);
   } catch (e) { recStatus.textContent = '回放失败。'; }
 });
 
@@ -569,20 +590,23 @@ async function runScore(): Promise<void> {
         }
         expectedPhonemes.innerHTML = expHtml.join('');
         userPhonemes.innerHTML = userHtml.join('');
-        errorList.innerHTML = errs.length ? errs.map((e) => `<li>${e}</li>`).join('') : '<li>全部正确 🎉</li>';
+        errorList.innerHTML = errs.length ? errs.map((e) => `<li>${e}</li>`).join('') : '<li class="all-ok">全部正确</li>';
       }
     }
 
     log('log', `score: word=${current?.word} score=${score} recognized=${recognizedFull}`);
-    scoreNum.textContent = String(score);
-    gradeText.textContent = gradeForScore(score);
+    setScoreRing(score);
+    setGrade(gradeForScore(score));
     resultEl.hidden = false;
     recStatus.textContent = '';
+    // 出分后不再显示“识别中”
+    modelStatus.textContent = '';
   } catch (e) {
     log('error', `score failed: ${(e as Error)?.message || e}`);
     // 之前这里吞掉了具体原因，统一只显示“评分失败，重试。”，
     // 用户无法区分是“没录到声音 / 录音太短 / 模型没加载上”。现在把具体原因显示出来。
     recStatus.textContent = e instanceof Error && e.message ? e.message : '评分失败，重试。';
+    modelStatus.textContent = '';
   } finally {
   }
 }
