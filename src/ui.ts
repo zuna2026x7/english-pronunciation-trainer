@@ -53,6 +53,20 @@ export function ensureLayout(): void {
       if (status) hero.insertAdjacentElement('afterend', status);
       document.querySelector('section.search-card')?.remove();
     }
+    // 1b) 标题栏：标题 + 右上设置，单独一行，避开系统状态栏；搜索框放在它下面
+    if (hero && settingsBtn && !hero.querySelector('.appbar-row')) {
+      const row = el('div', 'appbar-row');
+      const title = el('h1', 'app-title');
+      title.innerHTML = ICONS.mic + '<span>发音</span>';
+      row.appendChild(title);
+      row.appendChild(settingsBtn);
+      hero.insertBefore(row, hero.firstChild);
+    }
+    // 让 WebView 报告刘海/状态栏安全区（env(safe-area-inset-top)）
+    const vp = document.querySelector('meta[name="viewport"]');
+    if (vp && !/viewport-fit/.test(vp.getAttribute('content') || '')) {
+      vp.setAttribute('content', (vp.getAttribute('content') || '') + ', viewport-fit=cover');
+    }
     if (lookupBtn) lookupBtn.classList.add('visually-hidden');
     if (settingsBtn) {
       settingsBtn.classList.add('icon-square');

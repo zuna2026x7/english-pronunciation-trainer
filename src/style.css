@@ -133,3 +133,13 @@ body{background:#f6f7fb}
 .ipa-accent,.ring-num span,.settings-version,.settings-label{color:#475569}
 .topbar-search{color:#475569}
 .ring-num b{font-size:28px;letter-spacing:-.5px}
+/* 标题栏：避开 Android 15 edge-to-edge 下的系统状态栏（WebView 画到状态栏下面） */
+:root{--safe-top:max(env(safe-area-inset-top,0px),32px)}
+.topbar{flex-direction:column;align-items:stretch;gap:10px;margin:-16px -16px 0;padding:calc(var(--safe-top) + 4px) 16px 10px;border-bottom:1px solid #e9edf3}
+.appbar-row{display:flex;align-items:center;justify-content:space-between;min-height:44px}
+.app-title{display:flex;align-items:center;gap:8px;margin:0;font-size:20px;font-weight:700;color:#0f172a}
+.app-title svg{color:#2563eb}
+.appbar-row .icon-square{width:44px;height:44px}
+.settings-float{top:calc(var(--safe-top) + 56px)}
+.topbar .topbar-search{flex:none;height:46px}
+.settings-float{top:calc(var(--safe-top) + 112px)}
