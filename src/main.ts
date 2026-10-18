@@ -360,11 +360,27 @@ function renderIpaButtons(): void {
   ipaUsBtn.classList.toggle('selected', t === 'us');
 }
 
-settingsBtn.addEventListener('click', () => {
-  settingsCard.hidden = !settingsCard.hidden;
-  renderIpaButtons();
-  renderVersion();
+const settingsBackdrop = $('settingsBackdrop');
+
+function closeSettings(): void {
+  settingsCard.hidden = true;
+  settingsBackdrop.hidden = true;
+}
+
+settingsBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const willOpen = settingsCard.hidden;
+  settingsCard.hidden = !willOpen;
+  settingsBackdrop.hidden = !willOpen;
+  if (willOpen) {
+    renderIpaButtons();
+    renderVersion();
+  }
 });
+// 点设置控件之外（遮罩）自动收回
+settingsBackdrop.addEventListener('click', closeSettings);
+// 点设置卡片内部不收回（冒泡到 document 时需排除卡片内点击）
+settingsCard.addEventListener('click', (e) => e.stopPropagation());
 
 // App 版本号（正式版号，随发布递增；设置页与页脚都显示，方便确认当前装的是哪版）。
 export const APP_VERSION = '1.9';
