@@ -296,7 +296,7 @@ playNormal.addEventListener('click', async () => {
   lastPlayTapAt = now;
   const rate = SPEEDS[playSpeedIdx];
   log('log', `play: ${current?.word || ''} rate=${rate}`);
-  try { await playWithFallback(rate); } catch (e) { lookupStatus.textContent = '播放失败，稍后重试。'; }
+  try { await playWithFallback(rate); } catch (e) { log('error', `play failed: ${(e as Error)?.message || e} src=${refAudio.src || '(tts)'}`); lookupStatus.textContent = '播放失败，稍后重试。'; }
 });
 
 // 按住录音：手指按住开始，松开停止并自动打分（像微信按住说话）。

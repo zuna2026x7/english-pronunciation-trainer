@@ -22,9 +22,14 @@ async function loadPack(): Promise<Map<string, Entry> | null> {
         const list = ota
           ? (JSON.parse(ota) as Entry[])
           : await (async () => {
-              // 相对路径：根路径 / 与旧 /pronunciation/ 子路径、Capacitor 的 https://localhost 都能用
-              const res = await fetch('./data/cet4.json');
-              if (!res.ok) return null;
+              // 相对路径：根路径 / 与旧 /pronunciation/ 子路径、Capacitor 的 https://localhost 都能用。
+              // OTA 运行时 HTML 在 App 私有目录（_capacitor_file_/.../ota/index.html），
+              // 相对路径会解析到 OTA 目录（没有词表）而 404；失败时回落绝对路径 /data/...（APK 内置版）。
+              let res = await fetch('./data/cet4.json');
+              if (!res.ok) {
+                res = await fetch('/data/cet4.json');
+                if (!res.ok) return null;
+              }
               return (await res.json()) as Entry[];
             })();
         if (!list) return null;
@@ -61,8 +66,12 @@ async function loadAudioManifest(): Promise<AudioManifest | null> {
           audioManifest = JSON.parse(ota) as AudioManifest;
           return audioManifest;
         }
-        const res = await fetch('./data/audio/manifest.json');
-        if (!res.ok) return null;
+        // 同词表：OTA 目录无 manifest 时回落绝对路径（APK 内置版）
+        let res = await fetch('./data/audio/manifest.json');
+        if (!res.ok) {
+          res = await fetch('/data/audio/manifest.json');
+          if (!res.ok) return null;
+        }
         audioManifest = (await res.json()) as AudioManifest;
         return audioManifest;
       } catch {
@@ -85,7 +94,8 @@ export async function localAudioUrl(word: string): Promise<string> {
     const otaUrl = getOtaFileUrl(`data/audio/${fn}`);
     if (otaUrl) return otaUrl;
   }
-  return `./data/audio/${fn}`;
+  // 绝对路径：OTA 运行时相对路径会解析到 OTA 目录（无音频）而 404；绝对路径指向 APK 内置版。
+  return `/data/audio/${fn}`;
 }
 
 /** 本地词表查找：找到返回 WordInfo（有本地真人音频则带 audio，无则播放走 TTS），找不到返回 null。 */
