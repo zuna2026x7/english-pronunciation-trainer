@@ -59,6 +59,9 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Pi
 .app-footer{text-align:center;color:#94a3b8;font-size:11px;margin:16px 0 8px}
 /* 设置浮层：脱离文档流，浮在主窗口上方，不推挤布局；点遮罩（控件之外）自动收回 */
 .settings-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:40}
+.settings-backdrop[hidden]{display:none!important}
+/* 顶栏 z-index 必须高于遮罩（40），否则设置按钮会被遮罩盖住、点不出来；
+   遮罩残留可见时，点设置按钮会先命中遮罩（只关闭遮罩、不打开设置），表现为“有时点不出来”。 */
 .settings-float{position:fixed;left:50%;top:72px;transform:translateX(-50%);width:min(92vw,420px);z-index:50;margin-top:0;box-shadow:0 12px 32px rgba(15,23,42,.18)}
 
 /* ===== ui-redesign ===== */
@@ -66,8 +69,8 @@ body{background:#f6f7fb}
 .wrap{padding:16px 16px 24px}
 .wrap.has-bottombar{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
 .visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
-/* 顶栏：搜索 + 右上设置 */
-.topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;background:#f6f7fb;padding:8px 0}
+/* 顶栏：搜索 + 右上设置（z-index 45 > 遮罩 40，设置按钮始终可点；< 设置浮层 50） */
+.topbar{position:sticky;top:0;z-index:45;display:flex;align-items:center;gap:10px;background:#f6f7fb;padding:8px 0}
 .topbar-search{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:46px;padding:0 14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;color:#64748b;cursor:text}
 .topbar-search:focus-within{border-color:#2563eb}
 .topbar-search svg{flex:none}
