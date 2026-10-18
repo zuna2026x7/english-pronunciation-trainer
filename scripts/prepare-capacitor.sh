@@ -10,7 +10,7 @@
 #   android/app/src/main/assets/public/models/...（已被 .gitignore 排除），
 # Capacitor 以 https://localhost 提供这些文件，应用内 transformers.js
 # 走同源 /models/ 加载，安装后无需联网即可评分。
-# 模型来源：Hugging Face Xenova/whisper-tiny.en（与线上 speak.benext.uk 用的同一份）。
+# 模型来源：Hugging Face Xenova/whisper-base.en（与线上 speak.benext.uk 用的同一份）。
 #
 # 用法：
 #   bash scripts/prepare-capacitor.sh
@@ -33,8 +33,8 @@ echo "== 2/3 同步到 Capacitor Android =="
 npx cap sync android
 
 echo "== 3/3 下载 Whisper 模型进 APK assets（约 44MB，未下载过的才下载） =="
-MODEL_SRC="https://huggingface.co/Xenova/whisper-tiny.en/resolve/main"
-DEST="android/app/src/main/assets/public/models/Xenova/whisper-tiny.en/resolve/main"
+MODEL_SRC="https://huggingface.co/Xenova/whisper-base.en/resolve/main"
+DEST="android/app/src/main/assets/public/models/Xenova/whisper-base.en/resolve/main"
 mkdir -p "$DEST/onnx"
 FILES=(
   config.json
