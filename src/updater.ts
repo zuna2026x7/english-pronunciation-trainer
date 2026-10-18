@@ -161,11 +161,15 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 async function fetchManifest(): Promise<OtaManifest | null> {
+  // 加 10 秒超时：无超时时网络卡住会让“检查更新”一直没反应（按钮禁用、状态空白）。
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
   try {
     const res = await fetch(`${OTA_BASE}/manifest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
+      signal: ctrl.signal,
     });
     if (!res.ok) return null;
     const j = (await res.json()) as OtaManifest;
@@ -173,6 +177,8 @@ async function fetchManifest(): Promise<OtaManifest | null> {
     return j;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

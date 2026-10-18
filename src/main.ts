@@ -435,7 +435,7 @@ settingsUpdateBtn.addEventListener('click', async () => {
     settingsStatus.textContent = '当前版本已是最新';
     return;
   }
-  settingsStatus.textContent = '';
+  settingsStatus.textContent = '检查中…';
   settingsUpdateBtn.setAttribute('disabled', 'true');
   try {
     const found = await checkForUpdate();
