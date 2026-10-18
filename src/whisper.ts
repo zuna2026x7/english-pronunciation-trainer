@@ -40,6 +40,14 @@ function getPipeline(onProgress?: ProgressCb) {
         const base =
           !isCapacitor && window.location.pathname.startsWith('/pronunciation/') ? '/pronunciation' : '';
         env.remoteHost = `${window.location.origin}${base}/models`;
+        // ONNX WASM 后端：默认从 cdn.jsdelivr.net 动态拉取（离线/被挡时报
+        // “no available backend found”）。改走同源 /models/wasm/（APK 内 assets
+        // 或自有服务器本地文件），与模型一起打包，真正离线可用。
+        // transformers.js v3：env.backends.onnx.wasm.wasmPaths 未设置时才用 CDN 默认值。
+        (env as any).backends = (env as any).backends || {};
+        (env as any).backends.onnx = (env as any).backends.onnx || {};
+        (env as any).backends.onnx.wasm = (env as any).backends.onnx.wasm || {};
+        (env as any).backends.onnx.wasm.wasmPaths = `${window.location.origin}${base}/models/wasm/`;
       }
       // 允许从远程拉模型，禁用本地模型路径（浏览器无本地文件）
       env.allowLocalModels = false;

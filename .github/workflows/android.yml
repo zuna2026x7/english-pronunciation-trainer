@@ -36,6 +36,11 @@ jobs:
           du -sh public/data/audio
           python3 -c "import json; r=json.load(open('public/data/audio/report.json')); print('with_audio:', r['with_audio'], 'no_audio:', len(r['no_audio']), 'failed:', len(r['failed']))"
           test "$COUNT" -gt 0 || (echo "ERROR: no audio files downloaded" && exit 1)
+      - name: Copy ONNX WASM backend into public/models/wasm (21MB, bundled for offline)
+        run: |
+          mkdir -p public/models/wasm
+          cp node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm public/models/wasm/
+          ls -lh public/models/wasm/
       - run: npm run build
       # 热更新（OTA）产物：对比 dist 与 scripts/ota-baseline.json，生成 ota-publish/
       # （新版清单 + 变更文件），作为 CI artifact 供人工检查后手动 rsync 到服务器。

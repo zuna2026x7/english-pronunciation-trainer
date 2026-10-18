@@ -26,6 +26,10 @@ else
   echo "== 0/3 跳过真人语音（SKIP_AUDIO=1），播放走在线/TTS 兜底 =="
 fi
 
+echo "== 0.5/3 复制 ONNX WASM 后端进 public/models/wasm/（21MB，随网页一起打进 APK，离线可用） =="
+mkdir -p public/models/wasm
+cp node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm public/models/wasm/
+
 echo "== 1/3 构建网页 =="
 npm run build
 
