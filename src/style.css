@@ -126,3 +126,4 @@ body{background:#f6f7fb}
 .settings-float{top:76px}
 #settingsLogBtn{display:inline-flex;align-items:center;gap:6px}
 @media(max-width:560px){.word-head h2{font-size:36px}}
+#settingsStatus:empty{display:none}
