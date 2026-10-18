@@ -155,6 +155,11 @@ def main() -> int:
             entry_css = m.group(1)
     except Exception:
         pass
+    # OTA 必须自包含：入口 CSS/JS 即使没变更也要带上，否则全新安装（本地无 prev 文件）
+    # 时 OTA 目录缺 CSS，HTML 引用 ./assets/*.css 404，样式全丢（20261017.6 事故）。
+    for must in (entry_js, entry_css):
+        if must and must not in changed and must in current:
+            changed.append(must)
     new_version = bump_version(baseline.get("version", ""))
     files = []
     for rel in changed:
