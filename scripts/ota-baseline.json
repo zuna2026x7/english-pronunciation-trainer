@@ -1,5 +1,5 @@
 {
- "version": "20261017.3",
+ "version": "20261017.4",
  "files": {
   "data/cet4.json": {
    "sha256": "56948f3e67bb05e4f4b5ebe80811ac2be7fbdadcf97cb755e7ea0c8b00602c2d",
@@ -20981,12 +20981,12 @@
    "sha256": "99d673b09e71fae2b764b591c01217b8bec4d5e99add709b785691c9781714f2",
    "size": 4012
   },
-  "assets/index-XMbvEUs_.js": {
-   "sha256": "a9b519156aac92540cf7611820935cf67f69283f8f5685da6ff3124493fa8dfc",
-   "size": 911405
+  "assets/index-BwrzaSAz.js": {
+   "sha256": "f4c52051057d15b1c2d48a40981d5807b644c307fea251c4786351b3a1b82585",
+   "size": 911583
   },
-  "assets/web-DHDXRopx.js": {
-   "sha256": "7cbfc2d7409e3c470554560fdebc237a32b8d377b8efcf28fab34c9086accbbe",
+  "assets/web-BG0_6xU7.js": {
+   "sha256": "c97a0043ce6e6aa4aee8ccb8b845cf3b40665c9dceade6afd6d600da0456fc5e",
    "size": 8686
   }
  }
