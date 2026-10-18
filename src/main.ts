@@ -236,7 +236,10 @@ async function loadRealAudio(info: WordInfo, silentNoAudio = false): Promise<voi
 
 lookupBtn.addEventListener('click', () => lookup(wordInput.value));
 wordInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') lookup(wordInput.value);
+  if (e.key === 'Enter') {
+    wordInput.blur(); // 查词后收起输入法，避免它挡住/误弹
+    lookup(wordInput.value);
+  }
 });
 defToggleBtn.addEventListener('click', () => {
   defText.hidden = !defText.hidden;
@@ -356,6 +359,9 @@ function resetRecLabel(): void {
 }
 
 recBtn.addEventListener('pointerdown', (e) => {
+  // preventDefault 会阻止焦点从输入框移走：刚输完单词时输入框仍是焦点，
+  // Android 上按下录音（界面变红/重排）时输入法会被重新弹出。先主动收起键盘。
+  wordInput.blur();
   e.preventDefault();
   if (isHolding) return;
   isHolding = true;
