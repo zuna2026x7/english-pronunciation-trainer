@@ -52,8 +52,8 @@ jobs:
       - run: npx cap sync android
       - name: Download Whisper model into APK assets
         run: |
-          MODEL_SRC="https://huggingface.co/Xenova/whisper-tiny.en/resolve/main"
-          DEST="android/app/src/main/assets/public/models/Xenova/whisper-tiny.en/resolve/main"
+          MODEL_SRC="https://huggingface.co/Xenova/whisper-base.en/resolve/main"
+          DEST="android/app/src/main/assets/public/models/Xenova/whisper-base.en/resolve/main"
           mkdir -p "$DEST/onnx"
           for f in config.json generation_config.json preprocessor_config.json \
             tokenizer.json tokenizer_config.json vocab.json merges.txt \

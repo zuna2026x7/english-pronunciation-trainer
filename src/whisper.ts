@@ -1,4 +1,4 @@
-// 本地语音识别：Xenova/whisper-tiny.en via @huggingface/transformers v3（ONNX，浏览器本地跑）。
+// 本地语音识别：Xenova/whisper-base.en via @huggingface/transformers v3（ONNX，浏览器本地跑）。
 // 明确不用 Web Speech API（Chrome 里走 Google）、不用 Google Cloud Speech。
 // 注意：transformers 用静态 import（不要动态 import），让 Vite 打成单个 JS 入口。
 // 热更新时入口 JS 从 App 私有目录加载，若仍是动态 import，相对路径的 chunk
@@ -22,7 +22,7 @@ function getPipeline(onProgress?: ProgressCb) {
       // Capacitor App：跑在 https://localhost，模型由 APK 内 assets/public/models/ 提供，
       // 同样走同源 /models/，安装后无需联网即可评分。
       // 注意：transformers.js 用 remoteHost + remotePathTemplate 拼 URL，
-      // 自有服务器上的目录结构需为 <models>/Xenova/whisper-tiny.en/resolve/main/<file>。
+      // 自有服务器上的目录结构需为 <models>/Xenova/whisper-base.en/resolve/main/<file>。
       const isCapacitor =
         typeof window !== 'undefined' &&
         (!!(window as any).Capacitor ||
@@ -45,7 +45,7 @@ function getPipeline(onProgress?: ProgressCb) {
       env.allowLocalModels = false;
       env.allowRemoteModels = true;
       if (onProgress) onProgress('加载模型');
-      const pipe = await (pipeline as any)('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
+      const pipe = await (pipeline as any)('automatic-speech-recognition', 'Xenova/whisper-base.en', {
         quantized: true,
         progress_callback: (p: any) => {
           if (!onProgress) return;
@@ -72,7 +72,7 @@ export async function transcribePCM(pcm: Float32Array, onProgress?: ProgressCb):
     throw e;
   }
   if (onProgress) onProgress('识别中');
-  // 英文专用模型（whisper-tiny.en）不接受 language/task 参数，传入会报
+  // 英文专用模型（whisper-base.en）不接受 language/task 参数，传入会报
   // “Cannot specify `task` or `language` for an English-only model”。不传即可。
   const out = await pipe(pcm, {
     chunk_length_s: 30,
