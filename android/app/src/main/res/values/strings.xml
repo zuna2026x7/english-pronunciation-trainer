@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">发音</string>
-    <string name="title_activity_main">发音</string>
+    <string name="app_name">Phonix</string>
+    <string name="title_activity_main">Phonix</string>
     <string name="package_name">uk.benext.speak</string>
     <string name="custom_url_scheme">uk.benext.speak</string>
 </resources>
