@@ -1,4 +1,4 @@
-// 本地语音识别：Xenova/whisper-tiny.en via @huggingface/transformers v3（ONNX，浏览器本地跑）。
+// 本地语音识别：Xenova/whisper-base.en via @huggingface/transformers v3（ONNX，浏览器本地跑）。
 // 明确不用 Web Speech API（Chrome 里走 Google）、不用 Google Cloud Speech。
 // 推理在 Web Worker（src/whisper-worker.ts）里跑，主线程不被阻塞，评分时 UI 保持响应。
 // Worker 用 Vite 的 new Worker(new URL(...), {type:'module'}) 打包成独立 chunk，

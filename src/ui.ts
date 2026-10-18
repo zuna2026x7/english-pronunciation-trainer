@@ -57,11 +57,12 @@ export function ensureLayout(): void {
     if (hero && settingsBtn && !hero.querySelector('.appbar-row')) {
       const row = el('div', 'appbar-row');
       const title = el('h1', 'app-title');
-      title.innerHTML = ICONS.mic + '<span>发音</span>';
+      title.innerHTML = ICONS.mic + '<span>Phonix</span>';
       row.appendChild(title);
       row.appendChild(settingsBtn);
       hero.insertBefore(row, hero.firstChild);
     }
+    document.title = 'Phonix';
     // 让 WebView 报告刘海/状态栏安全区（env(safe-area-inset-top)）
     const vp = document.querySelector('meta[name="viewport"]');
     if (vp && !/viewport-fit/.test(vp.getAttribute('content') || '')) {

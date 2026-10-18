@@ -30,7 +30,7 @@ function getPipeline(onProgress?: (msg: string) => void) {
       env.allowLocalModels = false;
       env.allowRemoteModels = true;
       if (onProgress) onProgress('加载模型');
-      const pipe = await (pipeline as any)('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
+      const pipe = await (pipeline as any)('automatic-speech-recognition', 'Xenova/whisper-base.en', {
         quantized: true,
         progress_callback: (p: any) => {
           if (!onProgress) return;
@@ -69,7 +69,7 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       const pipe = await getPipeline(progress);
       progress('识别中');
-      // 英文专用模型（whisper-tiny.en）不接受 language/task 参数，传入会报
+      // 英文专用模型（whisper-base.en）不接受 language/task 参数，传入会报
       // “Cannot specify `task` or `language` for an English-only model”。不传即可。
       const out = await pipe(audio, { chunk_length_s: 30, stride_length_s: 5 });
       const text: string = typeof out?.text === 'string' ? out.text : '';
