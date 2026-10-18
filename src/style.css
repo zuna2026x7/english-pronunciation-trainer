@@ -127,3 +127,9 @@ body{background:#f6f7fb}
 #settingsLogBtn{display:inline-flex;align-items:center;gap:6px}
 @media(max-width:560px){.word-head h2{font-size:36px}}
 #settingsStatus:empty{display:none}
+/* 灰色文字加深，提高对比度 */
+.status{color:#475569}
+.status.muted,.muted{color:#64748b}
+.ipa-accent,.ring-num span,.settings-version,.settings-label{color:#475569}
+.topbar-search{color:#475569}
+.ring-num b{font-size:28px;letter-spacing:-.5px}
