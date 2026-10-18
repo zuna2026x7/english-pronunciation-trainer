@@ -22,8 +22,10 @@
   # 首次：快照当前 dist 为基线（构建 APK 的那次 dist），提交 baseline 到 git
   python3 scripts/build-ota.py --init-baseline
   # 发布热更新：改代码 -> npm run build -> 本脚本 -> 检查 ota-publish/ -> rsync 到服务器
+# 注意 --exclude 必须写成 /manifest.json（锚定根目录）；写成 manifest.json 会按 basename 匹配，
+# 把 data/audio/manifest.json 也排除掉（20261018.11 实测教训）。
   python3 scripts/build-ota.py
-  rsync -av ota-publish/ root@198.44.81.247:/opt/pronunciation-trainer/dist/updates/ --exclude=manifest.json
+  rsync -av ota-publish/ root@198.44.81.247:/opt/pronunciation-trainer/dist/updates/ --exclude=/manifest.json
   rsync -av ota-publish/manifest.json root@198.44.81.247:/opt/pronunciation-trainer/dist/updates/
   # 下一个完整 APK 构建时：把 public/updates/manifest.json 的 version  bump 到已发布的版本，
   # files 置 []（APK 已包含该版本内容），并重新 --init-baseline。

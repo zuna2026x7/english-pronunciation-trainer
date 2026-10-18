@@ -27,7 +27,10 @@ python3 scripts/build-ota.py
 
 # 3. 检查 ota-publish/（manifest.json + 变更文件），确认无误后发布：
 #    先 rsync 文件，再 rsync 清单（清单最后，避免客户端拉到指向尚不存在文件的清单）
-rsync -av ota-publish/ root@198.44.81.247:/opt/pronunciation-trainer/dist/updates/ --exclude=manifest.json
+#    注意：--exclude 必须写成 /manifest.json（锚定到传输根目录）。写成 manifest.json 会按
+#    basename 匹配，把 data/audio/manifest.json 也排除掉（2026-10-18 实测：OTA 清单已发布，
+#    但音频清单仍是旧版，reservoir 音频找不到；已补传并逐文件校验 sha256）。
+rsync -av ota-publish/ root@198.44.81.247:/opt/pronunciation-trainer/dist/updates/ --exclude=/manifest.json
 rsync -av ota-publish/manifest.json root@198.44.81.247:/opt/pronunciation-trainer/dist/updates/
 
 # 4. 提交基线到 git（build-ota.py 已更新 scripts/ota-baseline.json）

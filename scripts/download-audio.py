@@ -10,7 +10,8 @@
   manifest.json             {word: filename}，App 用它判断本地是否有真人音频
   report.json               总数 / 有音频数 / 无音频词 / 失败词 / 总字节数
 
-断点续跑：已存在且非空的文件直接跳过；manifest 每次按磁盘实际文件重建。
+断点续跑：已存在且非空的文件直接跳过；manifest 与旧清单合并（本次处理的词以本次结果为准，
+未处理的词保留旧条目），用 --words 子集跑也不会清掉其他词的条目。
 限速：默认 10 请求/秒 + 8 并发 + 3 次重试，遵守 Wikimedia API 礼仪（描述性 User-Agent）。
 
 用法：
@@ -232,6 +233,19 @@ def main() -> int:
     todo = [w for w in words if w not in manifest]
     print(f"词表 {len(words)} 个，已下载 {skipped} 个，待下载 {len(todo)} 个 -> {args.out}")
     sys.stdout.flush()
+
+    # 清单合并：保留旧清单里未在本轮处理的词的条目。
+    # 否则用 --words 子集跑时，写回的清单会丢掉其他词的条目（2026-10-18 实测：只跑 reservoir
+    # 一个词，清单被重写成 1 条；已用 git 恢复并追加 reservoir 条目）。
+    try:
+        with open(os.path.join(args.out, "manifest.json"), encoding="utf-8") as f:
+            old_manifest = json.load(f)
+    except Exception:
+        old_manifest = {}
+    if isinstance(old_manifest, dict):
+        for w, fn in old_manifest.items():
+            if w not in manifest and isinstance(fn, str):
+                manifest[w] = fn
 
     results = {}
     no_audio = []
