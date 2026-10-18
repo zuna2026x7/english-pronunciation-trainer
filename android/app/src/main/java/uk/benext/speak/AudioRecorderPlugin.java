@@ -46,6 +46,15 @@ public class AudioRecorderPlugin extends Plugin {
       call.reject("already recording");
       return;
     }
+    // 优先查 Android 系统权限（ContextCompat），不要只信 Capacitor 的 getPermissionState：
+    // 某些机型（华为）上 getPermissionState 会返回 PROMPT（即使系统已授予），导致每次按录音
+    // 都弹系统授权框（用户看到“需要录音权限”提示，但实际已在录）。系统已授予则直接开始录音。
+    if (androidx.core.content.ContextCompat.checkSelfPermission(
+            getContext(), android.Manifest.permission.RECORD_AUDIO)
+        == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+      startInternal(call);
+      return;
+    }
     if (getPermissionState("mic") == PermissionState.GRANTED) {
       startInternal(call);
     } else {
