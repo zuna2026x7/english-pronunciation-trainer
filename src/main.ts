@@ -5,9 +5,9 @@ import { transcribePCM, warmupModel } from './whisper';
 import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describeOp } from './ipa';
 import { lookupLocal, speakTTS } from './offline';
 import { initLogger, log, setState, uploadLogs } from './logger';
-import { getIpaType, setIpaType, getDefOpen, setDefOpen } from './settings';
+import { getIpaType, setIpaType } from './settings';
 import { autoCheckAndApply, checkForUpdate, applyUpdate, getCurrentVersion, otaSupported } from './updater';
-import { ensureLayout, setDefToggle, setReplayIcon, setAccentLabel, setScoreRing, setGrade } from './ui';
+import { ensureLayout, showDefModal, setReplayIcon, setAccentLabel, setScoreRing, setGrade } from './ui';
 import { normalizeIPA } from './ipa';
 
 initLogger();
@@ -154,13 +154,11 @@ async function lookup(word: string) {
     // 美式模式：后台升级美式音标（取不到保持英式，不动其他显示）
     void applyUsPhoneticIfNeeded(info.word);
     defText.textContent = info.definition ? `${info.pos ? info.pos + ' · ' : ''}${info.definition}` : '';
-    // 释义默认收起（用户只想看英文 + 听发音），但记住上次的展开/收起状态
-    const defOpen = getDefOpen() && !!info.definition;
-    defText.hidden = !defOpen;
+    // 释义走居中弹窗（点 释义 打开，点弹窗外面关闭），行内不再展开
+    defText.hidden = true;
     playSpeedIdx = 0;
     lastPlayTapAt = 0;
     defToggleBtn.hidden = !info.definition;
-    setDefToggle(defOpen);
     wordCard.hidden = false;
     practiceCard.hidden = false;
     resultEl.hidden = true;
@@ -242,9 +240,7 @@ wordInput.addEventListener('keydown', (e) => {
   }
 });
 defToggleBtn.addEventListener('click', () => {
-  defText.hidden = !defText.hidden;
-  setDefToggle(!defText.hidden);
-  setDefOpen(!defText.hidden);
+  showDefModal(defText.textContent || '');
 });
 
 async function playWithFallback(rate: number) {

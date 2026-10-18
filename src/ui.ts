@@ -149,9 +149,31 @@ export function ensureLayout(): void {
   }
 }
 
-export function setDefToggle(open: boolean): void {
-  const b = byId('defToggleBtn');
-  if (b) b.innerHTML = `<span>释义</span>${open ? ICONS.chevronUp : ICONS.chevronDown}`;
+/** 释义弹窗：居中显示，点遮罩关闭。元素动态创建，OTA 安全（旧 HTML 没有它们）。 */
+export function showDefModal(text: string): void {
+  let backdrop = byId('defBackdrop');
+  if (!backdrop) {
+    backdrop = el('div', 'def-backdrop', 'defBackdrop');
+    backdrop.addEventListener('click', hideDefModal);
+    document.body.appendChild(backdrop);
+  }
+  let modal = byId('defModal');
+  if (!modal) {
+    modal = el('div', 'def-modal', 'defModal');
+    modal.appendChild(el('p', 'def-modal-text', 'defModalText'));
+    document.body.appendChild(modal);
+  }
+  const textEl = byId('defModalText');
+  if (textEl) textEl.textContent = text;
+  if (backdrop) backdrop.hidden = false;
+  if (modal) modal.hidden = false;
+}
+
+export function hideDefModal(): void {
+  const b = byId('defBackdrop');
+  if (b) b.hidden = true;
+  const m = byId('defModal');
+  if (m) m.hidden = true;
 }
 
 export function setReplayIcon(playing: boolean): void {

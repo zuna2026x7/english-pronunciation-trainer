@@ -147,6 +147,11 @@ html,body{height:100%;overflow:hidden}
 #practiceCard #recStatus,#practiceCard #modelStatus{flex:none}
 #result{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 
+/* 释义弹窗：居中，点遮罩关闭（z-index 高于设置浮层 50） */
+.def-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:60}
+.def-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(88vw,420px);max-height:70vh;overflow-y:auto;background:#fff;border-radius:20px;padding:20px;z-index:70;box-shadow:0 12px 32px rgba(15,23,42,.18)}
+.def-modal-text{margin:0;color:#334155;font-size:15px;line-height:1.7}
+
 /* 标题栏：避开 Android 15 edge-to-edge 下的系统状态栏（WebView 画到状态栏下面） */
 :root{--safe-top:max(env(safe-area-inset-top,0px),32px)}
 .topbar{flex-direction:column;align-items:stretch;gap:10px;margin:-16px -16px 0;padding:calc(var(--safe-top) + 4px) 16px 10px;border-bottom:1px solid #e9edf3}
