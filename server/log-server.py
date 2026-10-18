@@ -11,6 +11,44 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 LOG_FILE = "/opt/pronunciation-trainer/logs/app.log"
 MAX_BODY = 256 * 1024
 SENSITIVE = ("token", "password", "passwd", "secret", "authorization", "cookie", "apikey", "api_key")
+# 日志滚动：app.log 超过 1MB 则滚动，保留 app.log.1 ~ app.log.5（共 5 个旧文件）
+LOG_MAX_BYTES = 1 * 1024 * 1024
+LOG_KEEP = 5
+# 录音清理：诊断用录音超过 7 天自动删除（每次收到日志时检查一次）
+AUDIO_KEEP_DAYS = 7
+
+
+def _rotate_log():
+    """app.log 超过 LOG_MAX_BYTES 时滚动：app.log -> app.log.1，app.log.1 -> app.log.2，…，丢弃最旧的。"""
+    try:
+        if not os.path.isfile(LOG_FILE):
+            return
+        if os.path.getsize(LOG_FILE) < LOG_MAX_BYTES:
+            return
+        for i in range(LOG_KEEP - 1, 0, -1):
+            src = f"{LOG_FILE}.{i}"
+            dst = f"{LOG_FILE}.{i + 1}"
+            if os.path.isfile(src):
+                if i == LOG_KEEP - 1 and os.path.isfile(dst):
+                    os.remove(dst)
+                os.rename(src, dst)
+        os.rename(LOG_FILE, f"{LOG_FILE}.1")
+    except Exception:
+        pass
+
+
+def _cleanup_old_audio():
+    """删除 logs/ 下超过 AUDIO_KEEP_DAYS 天的 audio-*.webm / audio-*.m4a（诊断用完即弃）。"""
+    try:
+        d = os.path.dirname(LOG_FILE)
+        cutoff = time.time() - AUDIO_KEEP_DAYS * 86400
+        for name in os.listdir(d):
+            if name.startswith("audio-") and (name.endswith(".webm") or name.endswith(".m4a")):
+                p = os.path.join(d, name)
+                if os.path.isfile(p) and os.path.getmtime(p) < cutoff:
+                    os.remove(p)
+    except Exception:
+        pass
 
 
 def _clean_str(v, limit=2000):
@@ -172,6 +210,8 @@ class Handler(BaseHTTPRequestHandler):
         }
         try:
             os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+            _rotate_log()  # 超 1MB 先滚动，再追加到新文件
+            _cleanup_old_audio()  # 删 7 天前的诊断录音
             with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         except Exception:
