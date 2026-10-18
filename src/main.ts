@@ -3,7 +3,7 @@ import { playAtRate, SPEEDS } from './audio';
 import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
 import { transcribePCM, warmupModel } from './whisper';
 import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describeOp } from './ipa';
-import { lookupLocal, speakTTS } from './offline';
+import { lookupLocal, speakTTS, reportMissingWord } from './offline';
 import { initLogger, log, setState, uploadLogs } from './logger';
 import { getIpaType, setIpaType } from './settings';
 import { autoCheckAndApply, checkForUpdate, applyUpdate, getCurrentVersion, otaSupported } from './updater';
@@ -137,10 +137,23 @@ async function lookup(word: string) {
   lookupStatus.textContent = '';
   lookupBtn.setAttribute('disabled', 'true');
   try {
-    // 离线优先：先查本地 4500 词包（离线可用）；本地没有再走在线词典/Wiktionary 兜底。
+    // 离线优先：先查本地词包（离线可用）；本地没有再走在线词典/Wiktionary 兜底。
     const local = await lookupLocal(word);
     const fromLocal = !!local;
-    const info = local ?? (await fetchWord(word));
+    let info: WordInfo;
+    if (local) {
+      info = local;
+    } else {
+      try {
+        info = await fetchWord(word);
+      } catch (e) {
+        // 本地没有、在线也查不到：上报缺词（供下次打包时核查补词），再按原逻辑报错。
+        void reportMissingWord(word, false);
+        throw e;
+      }
+      // 本地没有、在线查到了：也是缺词（真实存在的词），上报供下次打包补进词包。
+      void reportMissingWord(word, true);
+    }
     log('log', `lookup done: ${word} fromLocal=${fromLocal}`);
     current = info;
     // 别名音频：播放的是对方拼写的录音（美式），音标行下方标注，避免与英式音标混淆

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """发音 App 诊断日志接收：POST /api/log/ -> 追加一行 JSON 到 /opt/pronunciation-trainer/logs/app.log。
+缺词上报：POST /api/log/missing-word -> 追加一行 JSON 到 /opt/pronunciation-trainer/logs/missing-words.jsonl，
+打包时 scripts/missing-words.py 拉取核查（走 /api/log/ 前缀复用已有 nginx 反代，免改 nginx）。
 只用 Python 标准库。只接受白名单字段，不保存密码/token 等敏感信息（客户端已脱敏，这里再过滤一次）。
 监听 127.0.0.1:18081，仅供本机 nginx 反代，不对外暴露端口。
 """
@@ -9,6 +11,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 LOG_FILE = "/opt/pronunciation-trainer/logs/app.log"
+MISSING_WORDS_FILE = "/opt/pronunciation-trainer/logs/missing-words.jsonl"
 MAX_BODY = 256 * 1024
 SENSITIVE = ("token", "password", "passwd", "secret", "authorization", "cookie", "apikey", "api_key")
 # 日志滚动：app.log 超过 1MB 则滚动，保留 app.log.1 ~ app.log.5（共 5 个旧文件）
@@ -153,6 +156,40 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "base64": _b64.b64encode(data).decode(), "size": len(data)})
             except Exception:
                 self._send(500, {"ok": False, "error": "read failed"})
+            return
+        # 缺词上报：POST /api/log/missing-word，校验后追加一行 {ts, word, foundOnline}。
+        # 必须放在下面 /api/log 的路径检查之前，否则会被当成非法路径 404。
+        # foundOnline=true 表示在线词典查到了（真实存在的词，打包时优先补）；false 表示在线也查不到（多为拼写错误，打包时人工核查）。
+        if self.path in ("/api/log/missing-word", "/api/log/missing-word/"):
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            if n <= 0 or n > 4096:
+                self._send(413, {"ok": False, "error": "bad body"})
+                return
+            try:
+                data = json.loads(self.rfile.read(n).decode("utf-8"))
+            except Exception:
+                self._send(400, {"ok": False, "error": "bad json"})
+                return
+            if not isinstance(data, dict):
+                self._send(400, {"ok": False, "error": "bad json"})
+                return
+            import re as _re
+            word = str(data.get("word", "")).strip().lower()
+            if not word or len(word) > 64 or not _re.match(r"^[a-z][a-z' -]*$", word):
+                self._send(400, {"ok": False, "error": "bad word"})
+                return
+            rec = {"ts": int(time.time() * 1000), "word": word, "foundOnline": bool(data.get("foundOnline"))}
+            try:
+                os.makedirs(os.path.dirname(MISSING_WORDS_FILE), exist_ok=True)
+                with open(MISSING_WORDS_FILE, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            except Exception:
+                self._send(500, {"ok": False, "error": "write failed"})
+                return
+            self._send(200, {"ok": True})
             return
         if self.path not in ("/api/log", "/api/log/"):
             self._send(404, {"ok": False, "error": "not found"})

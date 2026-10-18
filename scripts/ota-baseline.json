@@ -1,8 +1,8 @@
 {
- "version": "20261018.9",
+ "version": "20261018.10",
  "files": {
   "index.html": {
-   "sha256": "73a56c7fae32b528e569da7e9a112bac0266be94789c53855dc4eccad10dd27d",
+   "sha256": "f4fda5a4574f67a20c7e82237bc20512040fe1f43a4caf40ec0622eed8a05c81",
    "size": 7866
   },
   "data/cet4.json": {
@@ -21001,17 +21001,17 @@
    "sha256": "de0e54136846ced84c91f6c2f9c93b5feee11c78ed96990885c9a4264410d7ea",
    "size": 11108
   },
-  "assets/web-CUWOn1Ik.js": {
-   "sha256": "5b82bb427c0e04ee02f179f3a5124004fe917f79dd28aa73406e20a7c7706b2c",
-   "size": 8686
-  },
   "assets/whisper-worker-BFRDw5qI.js": {
    "sha256": "7e67a507e31636957b41a6e1e283472b5f3b382e58a7fe5d671737e3ef8237dd",
    "size": 874976
   },
-  "assets/index-EvW_GP7x.js": {
-   "sha256": "2c89482fa6e327ebd61fb4c58e32d9c0d7b81a8bd92894647aaee8d8fc5d51c2",
-   "size": 45406
+  "assets/index-DHcIYhc8.js": {
+   "sha256": "d0af0a82ae05d63d35fd1dc0f546aef88a3be867669afd761b687484fc4137ec",
+   "size": 46069
+  },
+  "assets/web-86Ar-l_y.js": {
+   "sha256": "fed0950ab57f5bee892dd215f0393e02571c8e2ea25dc10358a95d4ffb0de543",
+   "size": 8686
   }
  }
 }

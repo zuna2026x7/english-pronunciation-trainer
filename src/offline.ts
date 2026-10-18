@@ -159,6 +159,46 @@ export async function lookupLocal(raw: string): Promise<WordInfo | null> {
   };
 }
 
+/** 缺词上报：本地词包没有的词，上报到服务器记录，供下次打包时核查补词。
+ *  只在查词时调用（main.ts lookup）；评分路径（Whisper 识别出的词）不调用，
+ *  避免误识别的垃圾词进记录。上报内容只有单词 + 是否在线查到，不含任何用户信息；
+ *  失败静默丢弃，不打扰用户；同词同会话只上报一次（成功后记入集合）。 */
+const MISSING_WORD_RE = /^[a-z][a-z' -]*$/;
+const reportedMissing = new Set<string>();
+
+export async function reportMissingWord(raw: string, foundOnline: boolean): Promise<void> {
+  const word = raw.trim().toLowerCase();
+  if (!word || word.length > 64 || !MISSING_WORD_RE.test(word)) return;
+  if (reportedMissing.has(word)) return;
+  try {
+    // 同 logger.uploadLogs：Capacitor 跑在 https://localhost，相对路径到不了服务器，用绝对地址。
+    const isCapacitor =
+      typeof window !== 'undefined' &&
+      (!!(window as unknown as { Capacitor?: unknown }).Capacitor ||
+        (window.location.hostname === 'localhost' &&
+          window.location.protocol === 'https:' &&
+          !window.location.port));
+    const url = isCapacitor
+      ? 'https://speak.benext.uk/api/log/missing-word'
+      : '/api/log/missing-word';
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word, foundOnline: !!foundOnline }),
+        signal: ctrl.signal,
+      });
+      if (res.ok) reportedMissing.add(word);
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    // 上报失败静默丢弃（离线/服务器不可达时不打扰用户；下次查到同词会再试）
+  }
+}
+
 /** TTS 播放（离线时用，无真人音频时兜底）。
  *  先 cancel 上一次朗读再播，避免连点时多条朗读排队叠加。
  *  rate 对应连点循环的 1.0 / 0.65 / 0.40；失败不抛，调用方不报错刷屏。 */
