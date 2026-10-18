@@ -360,26 +360,38 @@ function renderIpaButtons(): void {
   ipaUsBtn.classList.toggle('selected', t === 'us');
 }
 
-const settingsBackdrop = $('settingsBackdrop');
+// 遮罩：JS 动态创建，不依赖 index.html（index.html 不热更新；OTA 只推 JS/CSS，
+// 若 JS 引用了 HTML 里不存在的元素，$('...') 返回 null，设置就弹不出来）。
+// 动态创建保证 OTA 补丁自包含。
+function getSettingsBackdrop(): HTMLDivElement {
+  let el = document.getElementById('settingsBackdrop') as HTMLDivElement | null;
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'settingsBackdrop';
+    el.className = 'settings-backdrop';
+    el.hidden = true;
+    document.body.appendChild(el);
+    el.addEventListener('click', closeSettings);
+  }
+  return el;
+}
 
 function closeSettings(): void {
   settingsCard.hidden = true;
-  settingsBackdrop.hidden = true;
+  getSettingsBackdrop().hidden = true;
 }
 
 settingsBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   const willOpen = settingsCard.hidden;
   settingsCard.hidden = !willOpen;
-  settingsBackdrop.hidden = !willOpen;
+  getSettingsBackdrop().hidden = !willOpen;
   if (willOpen) {
     renderIpaButtons();
     renderVersion();
   }
 });
-// 点设置控件之外（遮罩）自动收回
-settingsBackdrop.addEventListener('click', closeSettings);
-// 点设置卡片内部不收回（冒泡到 document 时需排除卡片内点击）
+// 点设置卡片内部不收回
 settingsCard.addEventListener('click', (e) => e.stopPropagation());
 
 // App 版本号（正式版号，随发布递增；设置页与页脚都显示，方便确认当前装的是哪版）。
