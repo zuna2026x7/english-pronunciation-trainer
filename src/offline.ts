@@ -5,16 +5,25 @@
 // 查不到的词返回 null，调用方走现有在线词典/Wiktionary 兜底。
 
 import type { WordInfo } from './dictionary';
-import { getOtaText, getOtaFileUrl, isOtaActive } from './updater';
+import { getOtaText, getOtaFileUrl, isOtaActive, getOtaVersion } from './updater';
 
 type Entry = { w: string; p: string; d: string };
 
 let pack: Map<string, Entry> | null = null;
 let packPromise: Promise<Map<string, Entry> | null> | null = null;
+let packOtaVersion: string | null = null;
 
 async function loadPack(): Promise<Map<string, Entry> | null> {
+  // OTA 更新了词表（ept_ota_version 变了）：丢弃旧缓存，下次查词重新加载新词表。
+  // 否则 OTA 下载后、重启前查新词（如 sunny）仍走旧缓存，显示 fromLocal=false。
+  const curVer = getOtaVersion();
+  if (pack && packOtaVersion !== curVer) {
+    pack = null;
+    packPromise = null;
+  }
   if (pack) return pack;
   if (!packPromise) {
+    packOtaVersion = curVer;
     packPromise = (async () => {
       try {
         // 热更新版优先：App 私有目录里有新版词表时用它，否则用 APK 内置版
@@ -54,10 +63,18 @@ type AudioManifest = Record<string, string>;
 
 let audioManifest: AudioManifest | null = null;
 let audioManifestPromise: Promise<AudioManifest | null> | null = null;
+let audioManifestOtaVersion: string | null = null;
 
 async function loadAudioManifest(): Promise<AudioManifest | null> {
+  // 同词表：OTA 更新了音频清单时丢弃旧缓存
+  const curVer = getOtaVersion();
+  if (audioManifest && audioManifestOtaVersion !== curVer) {
+    audioManifest = null;
+    audioManifestPromise = null;
+  }
   if (audioManifest) return audioManifest;
   if (!audioManifestPromise) {
+    audioManifestOtaVersion = curVer;
     audioManifestPromise = (async () => {
       try {
         // 热更新版 manifest 优先（新词/新音频随热更新下发），否则用 APK 内置版

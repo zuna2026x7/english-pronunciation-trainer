@@ -157,7 +157,13 @@ def main() -> int:
         pass
     # OTA 必须自包含：入口 CSS/JS 即使没变更也要带上，否则全新安装（本地无 prev 文件）
     # 时 OTA 目录缺 CSS，HTML 引用 ./assets/*.css 404，样式全丢（20261017.6 事故）。
-    for must in (entry_js, entry_css):
+    # Worker JS 同理：入口 JS 依赖它，全新安装若缺它，Worker 启动失败、评分失败（20261018.1 事故）。
+    # Worker 文件名形如 assets/whisper-worker-*.js（Vite 打包的独立 chunk）。
+    must_files = [entry_js, entry_css]
+    for rel in sorted(current.keys()):
+        if rel.startswith("assets/") and "worker" in rel and rel.endswith(".js"):
+            must_files.append(rel)
+    for must in must_files:
         if must and must not in changed and must in current:
             changed.append(must)
     new_version = bump_version(baseline.get("version", ""))

@@ -33,6 +33,15 @@ const OTA_BASE = 'https://speak.benext.uk/api/updates';
 // 但 POST 响应（同 /api/log/）的 CORS 头能透过 Cloudflare。
 const OTA_DIR = 'ota';
 const VER_KEY = 'ept_ota_version';
+
+/** 当前已应用的 OTA 版本（localStorage），供词表缓存判断是否过期。 */
+export function getOtaVersion(): string | null {
+  try {
+    return localStorage.getItem(VER_KEY);
+  } catch {
+    return null;
+  }
+}
 const FILES_KEY = 'ept_ota_files';
 
 export interface AppliedFile {
