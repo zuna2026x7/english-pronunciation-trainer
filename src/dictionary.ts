@@ -41,6 +41,8 @@ export interface WordInfo {
   word: string;
   phonetic: string; // 如 /həˈloʊ/，可能为空
   audio: string; // 可能为空（首选 dictionaryapi 音频）
+  /** 本地音频是否来自英美拼写别名（播放的是对方拼写的录音，见 offline.ts AUDIO_ALIASES）。 */
+  audioAliased?: boolean;
   audioSourceUrl?: string; // 词典音频的 Wikimedia Commons 源页面，如 https://commons.wikimedia.org/w/index.php?curid=9021983（用于兜底）
   pos: string;
   definition: string;

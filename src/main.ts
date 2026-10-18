@@ -7,7 +7,7 @@ import { lookupLocal, speakTTS } from './offline';
 import { initLogger, log, setState, uploadLogs } from './logger';
 import { getIpaType, setIpaType } from './settings';
 import { autoCheckAndApply, checkForUpdate, applyUpdate, getCurrentVersion, otaSupported } from './updater';
-import { ensureLayout, showDefModal, setReplayIcon, setAccentLabel, setScoreRing, setGrade } from './ui';
+import { ensureLayout, showDefModal, setReplayIcon, setAccentLabel, setAudioAccentLabel, setScoreRing, setGrade } from './ui';
 import { normalizeIPA } from './ipa';
 
 initLogger();
@@ -143,6 +143,8 @@ async function lookup(word: string) {
     const info = local ?? (await fetchWord(word));
     log('log', `lookup done: ${word} fromLocal=${fromLocal}`);
     current = info;
+    // 别名音频：播放的是对方拼写的录音（美式），音标行下方标注，避免与英式音标混淆
+    setAudioAccentLabel(info.audioAliased ? 'us' : null);
     wordTitle.textContent = info.word;
     posBadge.textContent = info.pos || '';
     posBadge.style.display = info.pos ? '' : 'none';

@@ -99,20 +99,44 @@ async function loadAudioManifest(): Promise<AudioManifest | null> {
   return audioManifestPromise;
 }
 
+/** 英美拼写别名：同词异拼，词表里无音频、对方拼写有音频。
+ *  音频下载脚本（scripts/download-audio.py）取 Wiktionary 音频时优先 en-us，
+ *  故别名音频标注为美式录音（ui.setAudioAccentLabel），不与英式音标混淆。
+ *  只收同词异拼，不收同义词 / 缩写 / 错字（如 football→soccer、cigaret→cigarette）。 */
+export const AUDIO_ALIASES: Record<string, string> = {
+  analyse: 'analyze',
+  behaviour: 'behavior',
+  favour: 'favor',
+  odour: 'odor',
+  vapour: 'vapor',
+  centimeter: 'centimetre',
+};
+
 /** 本地真人音频 URL：热更新版优先（App 私有目录），否则 APK 内置版相对路径；无则返回 ''。 */
 export async function localAudioUrl(word: string): Promise<string> {
+  return (await resolveLocalAudio(word)).url;
+}
+
+/** 本地真人音频解析：直接命中清单返回直链；无直链时试英美拼写别名，aliased 标记是否走了别名。 */
+async function resolveLocalAudio(word: string): Promise<{ url: string; aliased: boolean }> {
   const w = word.trim().toLowerCase();
-  if (!w) return '';
+  if (!w) return { url: '', aliased: false };
   const m = await loadAudioManifest();
-  const fn = m?.[w];
-  if (!fn) return '';
+  let fn = m?.[w];
+  let aliased = false;
+  if (!fn) {
+    const target = AUDIO_ALIASES[w];
+    fn = target ? m?.[target] : undefined;
+    aliased = !!fn;
+  }
+  if (!fn) return { url: '', aliased: false };
   // 音频文件本身可能随热更新下发：热更新版存在时用它（经 convertFileSrc 的可加载 URL）
   if (isOtaActive()) {
     const otaUrl = getOtaFileUrl(`data/audio/${fn}`);
-    if (otaUrl) return otaUrl;
+    if (otaUrl) return { url: otaUrl, aliased };
   }
   // 绝对路径：OTA 运行时相对路径会解析到 OTA 目录（无音频）而 404；绝对路径指向 APK 内置版。
-  return `/data/audio/${fn}`;
+  return { url: `/data/audio/${fn}`, aliased };
 }
 
 /** 本地词表查找：找到返回 WordInfo（有本地真人音频则带 audio，无则播放走 TTS），找不到返回 null。 */
@@ -122,10 +146,12 @@ export async function lookupLocal(raw: string): Promise<WordInfo | null> {
   const m = await loadPack();
   const e = m?.get(word);
   if (!e) return null;
+  const { url: audio, aliased } = await resolveLocalAudio(word);
   return {
     word: e.w,
     phonetic: e.p || '',
-    audio: await localAudioUrl(word),
+    audio,
+    audioAliased: aliased,
     audioSourceUrl: '',
     pos: '',
     definition: e.d || '',

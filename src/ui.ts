@@ -187,6 +187,21 @@ export function setAccentLabel(type: 'uk' | 'us'): void {
   if (a) a.textContent = type === 'us' ? '美' : '英';
 }
 
+/** 美式录音标注：仅当当前词的音频来自英美拼写别名时显示（音标行下方小字）。
+ *  OTA 只换 JS/CSS 不换 HTML，元素动态创建，保证旧 HTML 下也能用。
+ *  注意：它标的是录音口音，不是音标口音（音标仍由左上角 英/美 标）。 */
+export function setAudioAccentLabel(kind: 'us' | null): void {
+  let a = byId('audioAccent');
+  if (!a) {
+    const row = document.querySelector('.ipa-row');
+    if (!row) return;
+    a = el('div', 'audio-accent', 'audioAccent');
+    row.insertAdjacentElement('afterend', a);
+  }
+  a.textContent = kind === 'us' ? '美式录音' : '';
+  a.hidden = kind !== 'us';
+}
+
 /** 分数环：弧长与颜色随分数变化。 */
 export function setScoreRing(score: number): void {
   const num = byId('scoreNum');
