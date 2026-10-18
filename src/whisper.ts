@@ -1,98 +1,74 @@
 // 本地语音识别：Xenova/whisper-tiny.en via @huggingface/transformers v3（ONNX，浏览器本地跑）。
 // 明确不用 Web Speech API（Chrome 里走 Google）、不用 Google Cloud Speech。
-// 注意：transformers 用静态 import（不要动态 import），让 Vite 打成单个 JS 入口。
-// 热更新时入口 JS 从 App 私有目录加载，若仍是动态 import，相对路径的 chunk
-// （transformers.web-*.js）会在热更新目录里 404，模型加载失败。静态 import 后入口 JS 自包含。
-
-import { pipeline, env } from '@huggingface/transformers';
-
-let pipePromise: Promise<any> | null = null;
-
-// 失败必须清掉缓存的 rejected promise，否则之后每次评分都会直接复用同一次失败，
-// 表现为“老是识别不出来”，直到换词触发 warmup 才有机会重试。
+// 推理在 Web Worker（src/whisper-worker.ts）里跑，主线程不被阻塞，评分时 UI 保持响应。
+// Worker 用 Vite 的 new Worker(new URL(...), {type:'module'}) 打包成独立 chunk，
+// 热更新时随 OTA 下发（build-ota.py 把新增 chunk 纳入清单），不会在热更新目录 404。
 
 export type ProgressCb = (msg: string) => void;
 
-function getPipeline(onProgress?: ProgressCb) {
-  if (!pipePromise) {
-    pipePromise = (async () => {
-      // pipeline / env 直接用顶部的静态 import（单文件 bundle，热更新安全）
-      // 自有服务器：模型走同源 /models/（speak 根路径部署）或 /pronunciation/models/（旧子路径部署），避免直连 huggingface.co 被挡。
-      // GitHub Pages 等外站：仍走默认 Hugging Face。
-      // Capacitor App：跑在 https://localhost，模型由 APK 内 assets/public/models/ 提供，
-      // 同样走同源 /models/，安装后无需联网即可评分。
-      // 注意：transformers.js 用 remoteHost + remotePathTemplate 拼 URL，
-      // 自有服务器上的目录结构需为 <models>/Xenova/whisper-tiny.en/resolve/main/<file>。
-      const isCapacitor =
-        typeof window !== 'undefined' &&
-        (!!(window as any).Capacitor ||
-          // Capacitor 跑在 https://localhost（无端口）；vite dev 是 http://localhost:5173，不算
-          (window.location.hostname === 'localhost' &&
-            window.location.protocol === 'https:' &&
-            !window.location.port));
-      const isSelfHosted =
-        typeof window !== 'undefined' &&
-        (window.location.hostname === '198.200.49.120' ||
-          /\.benext\.uk$/.test(window.location.hostname) ||
-          /\.chuangkai\.cloud$/.test(window.location.hostname) ||
-          window.location.pathname.startsWith('/pronunciation/'));
-      if (isSelfHosted || isCapacitor) {
-        const base =
-          !isCapacitor && window.location.pathname.startsWith('/pronunciation/') ? '/pronunciation' : '';
-        env.remoteHost = `${window.location.origin}${base}/models`;
-        // ONNX WASM 后端：默认从 cdn.jsdelivr.net 动态拉取（离线/被挡时报
-        // “no available backend found”）。改走同源 /models/wasm/（APK 内 assets
-        // 或自有服务器本地文件），与模型一起打包，真正离线可用。
-        // transformers.js v3：env.backends.onnx.wasm.wasmPaths 未设置时才用 CDN 默认值。
-        (env as any).backends = (env as any).backends || {};
-        (env as any).backends.onnx = (env as any).backends.onnx || {};
-        (env as any).backends.onnx.wasm = (env as any).backends.onnx.wasm || {};
-        (env as any).backends.onnx.wasm.wasmPaths = `${window.location.origin}${base}/models/wasm/`;
+let worker: Worker | null = null;
+let nextId = 1;
+const pending = new Map<
+  number,
+  { resolve: (text: string) => void; reject: (e: Error) => void; onProgress?: ProgressCb }
+>();
+
+function getWorker(): Worker {
+  if (!worker) {
+    worker = new Worker(new URL('./whisper-worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (e: MessageEvent) => {
+      const data = e.data;
+      if (!data || typeof data.type !== 'string') return;
+      if (data.type === 'progress') {
+        pending.get(data.id)?.onProgress?.(data.msg);
+        return;
       }
-      // 允许从远程拉模型，禁用本地模型路径（浏览器无本地文件）
-      env.allowLocalModels = false;
-      env.allowRemoteModels = true;
-      if (onProgress) onProgress('加载模型');
-      const pipe = await (pipeline as any)('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
-        quantized: true,
-        progress_callback: (p: any) => {
-          if (!onProgress) return;
-          if (p?.status === 'progress' && typeof p?.progress === 'number') {
-            onProgress(`加载模型 ${Math.round(p.progress)}%`);
-          } else if (p?.status) {
-            onProgress('');
-          }
-        },
-      });
-      if (onProgress) onProgress('');
-      return pipe;
-    })();
+      if (data.type === 'result' || data.type === 'ready') {
+        const p = pending.get(data.id);
+        if (p) {
+          pending.delete(data.id);
+          p.resolve(data.type === 'result' ? data.text : '');
+        }
+        return;
+      }
+      if (data.type === 'error') {
+        const p = pending.get(data.id);
+        if (p) {
+          pending.delete(data.id);
+          p.reject(new Error(data.error || '识别失败'));
+        }
+        return;
+      }
+    };
+    worker.onerror = (e) => {
+      // Worker 启动失败（如 chunk 404）：拒绝所有等待中的请求，主线程逻辑按原有错误处理。
+      for (const [, p] of pending) p.reject(new Error(e.message || 'Worker error'));
+      pending.clear();
+      worker = null;
+    };
   }
-  return pipePromise;
+  return worker;
 }
 
 export async function transcribePCM(pcm: Float32Array, onProgress?: ProgressCb): Promise<string> {
-  let pipe: any;
-  try {
-    pipe = await getPipeline(onProgress);
-  } catch (e) {
-    pipePromise = null; // 模型加载失败时清缓存，下次评分重新拉模型，而不是一直复用失败
-    throw e;
-  }
-  if (onProgress) onProgress('识别中');
-  // 英文专用模型（whisper-tiny.en）不接受 language/task 参数，传入会报
-  // “Cannot specify `task` or `language` for an English-only model”。不传即可。
-  const out = await pipe(pcm, {
-    chunk_length_s: 30,
-    stride_length_s: 5,
+  const w = getWorker();
+  const id = nextId++;
+  return new Promise<string>((resolve, reject) => {
+    pending.set(id, { resolve, reject, onProgress });
+    // 不用 transferable（会 detach 原 buffer，main.ts 的 myPcm 还要给回放用）；
+    // 结构化克隆拷贝一份，录音只有几秒（约 100KB），拷贝开销可忽略。
+    w.postMessage({ type: 'transcribe', id, audio: pcm });
   });
-  const text: string = typeof out?.text === 'string' ? out.text : '';
-  return text.trim().toLowerCase().replace(/[^a-z' -]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** 预热模型（用户点查词后可在后台预加载，点评分时更快）。失败不抛，评分时再试。 */
 export function warmupModel(onProgress?: ProgressCb): void {
-  getPipeline(onProgress).catch(() => {
-    pipePromise = null;
-  });
+  try {
+    const w = getWorker();
+    const id = nextId++;
+    pending.set(id, { resolve: () => {}, reject: () => {}, onProgress });
+    w.postMessage({ type: 'preload', id });
+  } catch {
+    // 预热失败不抛，评分时再试。
+  }
 }
