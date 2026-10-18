@@ -136,6 +136,17 @@ body{background:#f6f7fb}
 .ipa-accent,.ring-num span,.settings-version,.settings-label{color:#475569}
 .topbar-search{color:#475569}
 .ring-num b{font-size:28px;letter-spacing:-.5px}
+/* 页面不滚动：只有评分部分内部滚动。
+   页面上部（顶栏/单词卡）固定不动；评分区（#result）超高时只在自己内部滚动，
+   不带动整个页面。hidden 属性始终隐藏（flex 布局不覆盖它）。 */
+[hidden]{display:none!important}
+html,body{height:100%;overflow:hidden}
+.wrap{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+.topbar,#lookupStatus,#wordCard{flex:none}
+#practiceCard{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+#practiceCard #recStatus,#practiceCard #modelStatus{flex:none}
+#result{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+
 /* 标题栏：避开 Android 15 edge-to-edge 下的系统状态栏（WebView 画到状态栏下面） */
 :root{--safe-top:max(env(safe-area-inset-top,0px),32px)}
 .topbar{flex-direction:column;align-items:stretch;gap:10px;margin:-16px -16px 0;padding:calc(var(--safe-top) + 4px) 16px 10px;border-bottom:1px solid #e9edf3}
