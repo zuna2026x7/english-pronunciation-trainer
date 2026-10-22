@@ -21,6 +21,8 @@ const pending = new Map<
     resolve: (r: StudentScoreResult) => void;
     reject: (e: Error) => void;
     onProgress?: ProgressCb;
+    /** preload 专用：worker 回 ready 时带回“模型是否已缓存/已就绪”。 */
+    onReady?: (cached: boolean) => void;
   }
 >();
 
@@ -44,8 +46,12 @@ function getWorker(): Worker {
           inferMs: Number(data.inferMs) || 0,
         });
       } else if (data.type === 'ready') {
-        // preload 完成（tokens 为空，仅占位）
-        p.resolve({ tokens: [], loadMs: 0, inferMs: 0 });
+        if (p.onReady) {
+          p.onReady(!!data.cached);
+        } else {
+          // preload 完成（tokens 为空，仅占位）
+          p.resolve({ tokens: [], loadMs: 0, inferMs: 0 });
+        }
       } else {
         p.reject(new Error(String(data.error || 'phoneme worker error')));
       }
@@ -73,6 +79,35 @@ export function scoreWithStudent(
     } catch (err) {
       pending.delete(id);
       reject(err as Error);
+    }
+  });
+}
+
+/**
+ * 探测学生模型是否“已就绪可回落”：会话已建好，或模型已下载缓存（预热即加载会话）。
+ * 绝不触发下载——worker 的 preload 只读缓存。供服务器优先链路判断：
+ * 未就绪时绝不能走 scoreWithStudent（那会触发 122MB 下载 + 加载，弱机上会崩）。
+ */
+export function probeStudentReady(): Promise<boolean> {
+  return new Promise((resolve) => {
+    let done = false;
+    const settle = (v: boolean) => {
+      if (!done) {
+        done = true;
+        resolve(v);
+      }
+    };
+    const id = nextId++;
+    pending.set(id, {
+      resolve: () => settle(false),
+      reject: () => settle(false),
+      onReady: (cached) => settle(cached),
+    });
+    try {
+      getWorker().postMessage({ type: 'preload', id });
+    } catch {
+      pending.delete(id);
+      settle(false);
     }
   });
 }

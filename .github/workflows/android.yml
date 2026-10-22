@@ -36,11 +36,11 @@ jobs:
           du -sh public/data/audio
           python3 -c "import json; r=json.load(open('public/data/audio/report.json')); print('with_audio:', r['with_audio'], 'no_audio:', len(r['no_audio']), 'failed:', len(r['failed']))"
           test "$COUNT" -gt 0 || (echo "ERROR: no audio files downloaded" && exit 1)
-      - name: Copy ONNX WASM backend into public/models/wasm (21MB, bundled for offline)
+      - name: Copy ONNX WASM backend into public/models/wasm (phoneme student runtime, bundled for offline)
         run: |
           mkdir -p public/models/wasm
-          cp node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm public/models/wasm/
-          # 标准版一对：音素学生模型（src/phoneme-worker.ts，onnxruntime-web/wasm extern 变体）运行时从同目录取
+          # 标准版一对：音素学生模型（src/phoneme-worker.ts，onnxruntime-web/wasm extern 变体）运行时从同目录取。
+          # Whisper 已移除（2026-10-22），transformers 的 jsep 一对不再需要、不再打包。
           cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs public/models/wasm/
           ls -lh public/models/wasm/
       - run: npm run build
@@ -57,19 +57,8 @@ jobs:
           path: ota-publish/
           if-no-files-found: ignore
       - run: npx cap sync android
-      - name: Download Whisper model into APK assets
-        run: |
-          MODEL_SRC="https://huggingface.co/Xenova/whisper-base.en/resolve/main"
-          DEST="android/app/src/main/assets/public/models/Xenova/whisper-base.en/resolve/main"
-          mkdir -p "$DEST/onnx"
-          for f in config.json generation_config.json preprocessor_config.json \
-            tokenizer.json tokenizer_config.json vocab.json merges.txt \
-            special_tokens_map.json added_tokens.json normalizer.json quant_config.json \
-            onnx/encoder_model_quantized.onnx onnx/decoder_model_merged_quantized.onnx; do
-            echo "download: $f"
-            curl -fL --retry 2 -o "$DEST/$f" "$MODEL_SRC/$f"
-          done
-          du -sh "$DEST"
+      # Whisper 模型已随 Whisper 一起移除（2026-10-22）：APK 不再打包任何识别模型；
+      # 打分走服务器通道（在线）/ 本地音素学生模型（首次本地打分时下载缓存）。
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

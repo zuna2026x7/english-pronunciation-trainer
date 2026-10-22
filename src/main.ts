@@ -1,13 +1,13 @@
-import { fetchWord, fetchPhoneticFor, fetchWikimediaAudio, pickUsPhonetic, fetchUsPhonetic, type WordInfo } from './dictionary';
+import { fetchWord, fetchWikimediaAudio, pickUsPhonetic, fetchUsPhonetic, type WordInfo } from './dictionary';
 import { playAtRate, SPEEDS } from './audio';
 import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
-import { transcribePCM, warmupModel } from './whisper';
-import { scoreWithStudent, warmupStudentModel } from './phoneme-scorer';
+import { scoreWithStudent, warmupStudentModel, probeStudentReady } from './phoneme-scorer';
+import { scoreWithServer } from './server-scorer';
 import { normalizeTargetTokens, scoreTokens } from './phoneme-decode';
-import { tokenizeIPA, alignPhonemes, scoreFromAlignment, gradeForScore, describeOp } from './ipa';
+import { alignPhonemes, gradeForScore, describeOp } from './ipa';
 import { lookupLocal, speakTTS, reportMissingWord } from './offline';
 import { initLogger, log, setState, uploadLogs } from './logger';
-import { getIpaType, setIpaType, getPhonemeScorer, setPhonemeScorer } from './settings';
+import { getIpaType, setIpaType, getPhonemeScorer, setPhonemeScorer, getServerScorer, setServerScorer } from './settings';
 import { autoCheckAndApply, checkForUpdate, applyUpdate, getCurrentVersion, otaSupported } from './updater';
 import { ensureLayout, showDefModal, setReplayIcon, setAccentLabel, setAudioAccentLabel, setScoreRing, setGrade } from './ui';
 import { normalizeIPA } from './ipa';
@@ -209,8 +209,6 @@ async function lookup(word: string) {
         }
       })();
     }
-    // 后台预热识别模型，评分时更快
-    warmupModel((m) => { modelStatus.textContent = m; setState('model', m || 'ready'); });
     // 音素学生模型预热：只在已下载缓存时加载会话，绝不后台偷跑 122MB 下载。
     // 结构性防护：预热在查词主流程里同步调用，这里再包一层 try——新打分通道
     // 任何同步异常都不许冒泡打断查词（其内部本就有 try/catch，这是接缝处的双保险）。
@@ -457,6 +455,54 @@ function renderPhonemeScorerButtons(): void {
   offBtn.classList.toggle('selected', !enabled);
 }
 
+
+// 服务器打分开关行：动态创建（理由同音素模型行）。与音素模型行并列，
+// 两个开关都关时打分会明确报“没有可用的打分通道”，不假装出分。
+function ensureServerScorerRow(): void {
+  if (document.getElementById('serverScorerRow')) return;
+  const row = document.createElement('div');
+  row.className = 'settings-row';
+  row.id = 'serverScorerRow';
+  const label = document.createElement('span');
+  label.className = 'settings-label';
+  label.textContent = '服务器打分';
+  const seg = document.createElement('div');
+  seg.className = 'seg';
+  const onBtn = document.createElement('button');
+  onBtn.id = 'serverOnBtn';
+  onBtn.className = 'btn seg-btn';
+  onBtn.textContent = '开';
+  const offBtn = document.createElement('button');
+  offBtn.id = 'serverOffBtn';
+  offBtn.className = 'btn seg-btn';
+  offBtn.textContent = '关';
+  onBtn.addEventListener('click', () => {
+    setServerScorer(true);
+    renderServerScorerButtons();
+  });
+  offBtn.addEventListener('click', () => {
+    setServerScorer(false);
+    renderServerScorerButtons();
+  });
+  seg.append(onBtn, offBtn);
+  row.append(label, seg);
+  const logRow = settingsLogBtn.closest('.settings-row');
+  if (logRow && logRow.parentElement === settingsCard) {
+    settingsCard.insertBefore(row, logRow);
+  } else {
+    settingsCard.appendChild(row);
+  }
+}
+
+function renderServerScorerButtons(): void {
+  const onBtn = document.getElementById('serverOnBtn');
+  const offBtn = document.getElementById('serverOffBtn');
+  if (!onBtn || !offBtn) return;
+  const enabled = getServerScorer();
+  onBtn.classList.toggle('selected', enabled);
+  offBtn.classList.toggle('selected', !enabled);
+}
+
 // 遮罩：JS 动态创建，不依赖 index.html（index.html 不热更新；OTA 只推 JS/CSS，
 // 若 JS 引用了 HTML 里不存在的元素，$('...') 返回 null，设置就弹不出来）。
 // 动态创建保证 OTA 补丁自包含。
@@ -487,6 +533,8 @@ settingsBtn.addEventListener('click', (e) => {
     renderIpaButtons();
     ensurePhonemeScorerRow();
     renderPhonemeScorerButtons();
+    ensureServerScorerRow();
+    renderServerScorerButtons();
     renderVersion();
   }
 });
@@ -573,77 +621,108 @@ playMineBtn.addEventListener('click', async () => {
   } catch (e) { recStatus.textContent = '回放失败。'; }
 });
 
-function letterDistance(a: string, b: string): number {
-  const n = a.length, m = b.length;
-  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  for (let i = 0; i <= n; i++) dp[i][0] = i;
-  for (let j = 0; j <= m; j++) dp[0][j] = j;
-  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-  return dp[n][m];
+/** 音素打分渲染（本地学生模型 / 服务器共用）：tokens 为识别到的音素（评估词元
+ *  空间），expectedTokens 为目标词元。算分与对齐都走本地同一套逻辑，保证同一
+ *  录音在两种通道下渲染与分数完全一致。返回界面分数（取整）。 */
+function renderPhonemeScore(tokens: string[], expectedTokens: string[]): number {
+  const { ops } = alignPhonemes(expectedTokens, tokens);
+  const score = Math.round(scoreTokens(tokens, expectedTokens));
+  recognizedText.textContent = `/${tokens.join(' ')}/`;
+  fallbackNote.hidden = true;
+  // 渲染音素对比
+  const expHtml: string[] = [];
+  const userHtml: string[] = [];
+  const errs: string[] = [];
+  for (const op of ops) {
+    if (op.type === 'equal') {
+      expHtml.push(`<span class="ok">${op.expected}</span>`);
+      userHtml.push(`<span class="ok">${op.actual}</span>`);
+    } else if (op.type === 'sub') {
+      expHtml.push(`<span class="bad">${op.expected}</span>`);
+      userHtml.push(`<span class="bad">${op.actual}</span>`);
+      const d = describeOp(op);
+      if (d) errs.push(d);
+    } else if (op.type === 'del') {
+      expHtml.push(`<span class="bad">${op.expected}</span>`);
+      const d = describeOp(op);
+      if (d) errs.push(d);
+    } else if (op.type === 'ins') {
+      userHtml.push(`<span class="extra">${op.actual}</span>`);
+      const d = describeOp(op);
+      if (d) errs.push(d);
+    }
+  }
+  expectedPhonemes.innerHTML = expHtml.join('');
+  userPhonemes.innerHTML = userHtml.join('');
+  errorList.innerHTML = errs.length ? errs.map((e) => `<li>${e}</li>`).join('') : '<li class="all-ok">全部正确</li>';
+  setScoreRing(score);
+  setGrade(gradeForScore(score));
+  resultEl.hidden = false;
+  recStatus.textContent = '';
+  modelStatus.textContent = '';
+  return score;
 }
 
-/** 音素学生模型打分（测试版）：解码录音的音素序列，与目标音标的归一化词元对齐出分，
- *  渲染复用现有结果区。出分成功返回 true；开关关 / 无目标词元 / 解码为空 / 任何失败
- *  都返回 false，由 runScore 静默回落原来的 Whisper 流程（失败原因写日志）。 */
+/** 目标词元：把当前显示音标（本地词包 p 字段即 ECDICT 写法）归一化到评估词元空间，
+ *  与桌面 evaluate_v5.py 的 gold 生成方式严格一致（如 /həˈləu/ -> [h, ə, l, o, ʊ]）。
+ *  当前显示音标已按英式/美式设置切换过（美式模式下 current.phonetic 是美式音标）。 */
+function currentTargetTokens(): string[] {
+  return normalizeTargetTokens(current?.phonetic || '');
+}
+
+/** 音素学生模型打分（本地 ONNX）：解码录音的音素序列出分。出分成功返回 true；
+ *  无目标词元 / 解码为空 / 任何失败都返回 false，由 runScore 继续下一通道。 */
 async function tryStudentScore(pcm: Float32Array): Promise<boolean> {
   if (!current) return false;
-  // 目标词元：把当前显示音标（本地词包 p 字段即 ECDICT 写法）归一化到评估词元空间，
-  // 与桌面 evaluate_v5.py 的 gold 生成方式严格一致（如 /həˈləu/ -> [h, ə, l, o, ʊ]）。
-  const expectedTokens = normalizeTargetTokens(current.phonetic || '');
+  const expectedTokens = currentTargetTokens();
   if (expectedTokens.length === 0) {
-    log('log', 'student scorer: 目标词无可用音标，回落 Whisper');
+    log('log', 'student scorer: 目标词无可用音标，跳过');
     return false;
   }
   try {
     const r = await scoreWithStudent(pcm, (m) => (modelStatus.textContent = m));
     if (r.tokens.length === 0) {
-      log('log', `student scorer: 解码为空 (loadMs=${r.loadMs} inferMs=${r.inferMs})，回落 Whisper`);
+      log('log', `student scorer: 解码为空 (loadMs=${r.loadMs} inferMs=${r.inferMs})，跳过`);
       return false;
     }
-    const { ops } = alignPhonemes(expectedTokens, r.tokens);
-    const score = Math.round(scoreTokens(r.tokens, expectedTokens));
-    recognizedText.textContent = `/${r.tokens.join(' ')}/`;
-    fallbackNote.hidden = true;
-    // 渲染音素对比（与 Whisper 路径同一套 ops 渲染）
-    const expHtml: string[] = [];
-    const userHtml: string[] = [];
-    const errs: string[] = [];
-    for (const op of ops) {
-      if (op.type === 'equal') {
-        expHtml.push(`<span class="ok">${op.expected}</span>`);
-        userHtml.push(`<span class="ok">${op.actual}</span>`);
-      } else if (op.type === 'sub') {
-        expHtml.push(`<span class="bad">${op.expected}</span>`);
-        userHtml.push(`<span class="bad">${op.actual}</span>`);
-        const d = describeOp(op);
-        if (d) errs.push(d);
-      } else if (op.type === 'del') {
-        expHtml.push(`<span class="bad">${op.expected}</span>`);
-        const d = describeOp(op);
-        if (d) errs.push(d);
-      } else if (op.type === 'ins') {
-        userHtml.push(`<span class="extra">${op.actual}</span>`);
-        const d = describeOp(op);
-        if (d) errs.push(d);
-      }
-    }
-    expectedPhonemes.innerHTML = expHtml.join('');
-    userPhonemes.innerHTML = userHtml.join('');
-    errorList.innerHTML = errs.length ? errs.map((e) => `<li>${e}</li>`).join('') : '<li class="all-ok">全部正确</li>';
+    const score = renderPhonemeScore(r.tokens, expectedTokens);
     log(
       'log',
       `score: source=student word=${current.word} score=${score} loadMs=${r.loadMs} inferMs=${r.inferMs} phonemes=${r.tokens.join(' ')}`,
     );
     setState('scorer', 'student');
-    setScoreRing(score);
-    setGrade(gradeForScore(score));
-    resultEl.hidden = false;
-    recStatus.textContent = '';
-    modelStatus.textContent = '';
     return true;
   } catch (e) {
-    log('error', `student scorer failed, fallback to whisper: ${(e as Error)?.message || e}`);
-    setState('scorer', 'whisper');
+    log('error', `student scorer failed: ${(e as Error)?.message || e}`);
+    modelStatus.textContent = '';
+    return false;
+  }
+}
+
+/** 服务器打分（自建服务，fp32 学生模型）：把录音原文件发过去出分。
+ *  出分成功返回 true；任何失败返回 false 并写日志，由 runScore 回落本地通道。 */
+async function tryServerScore(blob: Blob): Promise<boolean> {
+  if (!current) return false;
+  const expectedTokens = currentTargetTokens();
+  if (expectedTokens.length === 0) {
+    log('log', 'server scorer: 目标词无可用音标，跳过');
+    return false;
+  }
+  try {
+    const r = await scoreWithServer(blob, current.word, current.phonetic || '');
+    if (r.tokens.length === 0) {
+      log('log', `server scorer: 解码为空 (totalMs=${r.totalMs} serverMs=${r.serverMs})，回落本地`);
+      return false;
+    }
+    const score = renderPhonemeScore(r.tokens, expectedTokens);
+    log(
+      'log',
+      `score: source=server word=${current.word} score=${score} totalMs=${r.totalMs} serverMs=${r.serverMs} phonemes=${r.tokens.join(' ')}`,
+    );
+    setState('scorer', 'server');
+    return true;
+  } catch (e) {
+    log('error', `server scorer failed, fallback: ${(e as Error)?.message || e}`);
     modelStatus.textContent = '';
     return false;
   }
@@ -657,99 +736,24 @@ async function runScore(): Promise<void> {
     myPcm = pcm;
     if (pcm.length < 1600) throw new Error('录音太短，请完整读出单词');
     if (pcmPeak(pcm) < 0.01) throw new Error('没录到声音，请靠近麦克风再试一次');
-    // 音素学生模型优先（开关开时）：成功直接出分，任何失败静默回落下面的 Whisper 流程
-    if (getPhonemeScorer() && (await tryStudentScore(pcm))) return;
-    const text = await transcribePCM(pcm, (m) => (modelStatus.textContent = m));
-    const recognizedFull = text || '';
-    const recognizedWord = recognizedFull.split(/\s+/)[0] || '';
-    recognizedText.textContent = recognizedFull || '—';
-    const target = current.word.toLowerCase();
-    const wordMatch = recognizedWord === target;
-
-    const expectedTokens = tokenizeIPA(current.phonetic || '');
-    let score: number;
-    let fallback = false;
-
-    if (!recognizedWord) {
-      score = 0;
-      fallback = true;
-      fallbackNote.hidden = false;
-      fallbackNote.textContent = '未识别出内容，0 分。';
-      expectedPhonemes.innerHTML = '';
-      userPhonemes.innerHTML = '';
-      errorList.innerHTML = '<li>未识别出内容</li>';
-    } else if (expectedTokens.length === 0) {
-      // 目标词无音标：走拼写相似度兜底
-      const d = letterDistance(target, recognizedWord);
-      score = Math.max(0, Math.round(100 * (1 - d / Math.max(target.length, recognizedWord.length, 1))));
-      fallback = true;
-      fallbackNote.hidden = false;
-      fallbackNote.textContent = '无音标，按拼写评分。';
-      expectedPhonemes.innerHTML = `<span>${current.word}</span>`;
-      userPhonemes.innerHTML = `<span>${recognizedWord}</span>`;
-      errorList.innerHTML = wordMatch ? '<li>整词识别一致</li>' : `<li>识别为 “${recognizedWord}”，与目标 “${target}” 拼写有差异</li>`;
-    } else {
-      // 识别词的音标：美式模式先在线取 -us 音标，取不到回落英式；
-      // 英式：先查本地词包（离线可用），没有再走在线词典
-      let recogPhonetic = '';
-      if (getIpaType() === 'us' && navigator.onLine) {
-        recogPhonetic = await fetchUsPhonetic(recognizedWord);
-      }
-      if (!recogPhonetic) {
-        const localRecog = await lookupLocal(recognizedWord);
-        recogPhonetic = localRecog?.phonetic ?? (await fetchPhoneticFor(recognizedWord));
-      }
-      const actualTokens = tokenizeIPA(recogPhonetic || '');
-      if (actualTokens.length === 0) {
-        const d = letterDistance(target, recognizedWord);
-        score = Math.max(0, Math.round(100 * (1 - d / Math.max(target.length, recognizedWord.length, 1))));
-        fallback = true;
-        fallbackNote.hidden = false;
-        fallbackNote.textContent = '无音标，按拼写评分。';
-        expectedPhonemes.innerHTML = expectedTokens.map((t) => `<span>${t}</span>`).join('');
-        userPhonemes.innerHTML = `<span>${recognizedWord}</span>`;
-        errorList.innerHTML = `<li>识别为 “${recognizedWord}”</li>`;
-      } else {
-        fallback = false;
-        fallbackNote.hidden = true;
-        const { ops, distance } = alignPhonemes(expectedTokens, actualTokens);
-        score = scoreFromAlignment(expectedTokens.length, actualTokens.length, distance, wordMatch);
-        // 渲染音素对比
-        const expHtml: string[] = [];
-        const userHtml: string[] = [];
-        const errs: string[] = [];
-        for (const op of ops) {
-          if (op.type === 'equal') {
-            expHtml.push(`<span class="ok">${op.expected}</span>`);
-            userHtml.push(`<span class="ok">${op.actual}</span>`);
-          } else if (op.type === 'sub') {
-            expHtml.push(`<span class="bad">${op.expected}</span>`);
-            userHtml.push(`<span class="bad">${op.actual}</span>`);
-            const d = describeOp(op);
-            if (d) errs.push(d);
-          } else if (op.type === 'del') {
-            expHtml.push(`<span class="bad">${op.expected}</span>`);
-            const d = describeOp(op);
-            if (d) errs.push(d);
-          } else if (op.type === 'ins') {
-            userHtml.push(`<span class="extra">${op.actual}</span>`);
-            const d = describeOp(op);
-            if (d) errs.push(d);
-          }
+    // 打分通道优先级：服务器（开关开 + 在线）→ 本地音素学生模型 → 明确失败。
+    // 服务器优先模式下学生模型只作“已就绪”回落（probeStudentReady 只读缓存），
+    // 绝不因回落触发 122MB 下载——弱机上下载+加载会闪退（已实证）。
+    // 服务器开关关 = 显式本地模式：学生模型是主通道，沿用首次打分下载模型的流程。
+    if (getServerScorer() && navigator.onLine && (await tryServerScore(myBlob))) return;
+    if (getPhonemeScorer()) {
+      if (getServerScorer()) {
+        if (await probeStudentReady()) {
+          if (await tryStudentScore(pcm)) return;
+        } else {
+          log('log', 'student scorer: 模型未就绪（未缓存），跳过本地回落（不触发下载）');
         }
-        expectedPhonemes.innerHTML = expHtml.join('');
-        userPhonemes.innerHTML = userHtml.join('');
-        errorList.innerHTML = errs.length ? errs.map((e) => `<li>${e}</li>`).join('') : '<li class="all-ok">全部正确</li>';
+      } else if (await tryStudentScore(pcm)) {
+        return;
       }
     }
-
-    log('log', `score: word=${current?.word} score=${score} recognized=${recognizedFull}`);
-    setScoreRing(score);
-    setGrade(gradeForScore(score));
-    resultEl.hidden = false;
-    recStatus.textContent = '';
-    // 出分后不再显示“识别中”
-    modelStatus.textContent = '';
+    log('error', 'score failed: no scoring channel available');
+    throw new Error('打分失败：没有可用的打分通道，请检查网络或打分设置');
   } catch (e) {
     log('error', `score failed: ${(e as Error)?.message || e}`);
     // 之前这里吞掉了具体原因，统一只显示“评分失败，重试。”，

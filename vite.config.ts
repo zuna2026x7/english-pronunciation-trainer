@@ -29,9 +29,8 @@ export default defineConfig({
   base: './',
   resolve: {
     // onnxruntime-web 走 extern-wasm 变体（ort.wasm.min.mjs）：wasm/glue 由
-    // /models/wasm/ 在运行时提供（与 Whisper 的 jsep 一对同目录），不把 11MB wasm
-    // 以 base64 内嵌进 worker JS。该 condition 名只有 onnxruntime-web 用，
-    // transformers 的 ORT 是其 dist 内联的，不受影响。
+    // /models/wasm/ 在运行时提供（音素学生模型 worker），不把 11MB wasm
+    // 以 base64 内嵌进 worker JS。
     conditions: ['onnxruntime-web-use-extern-wasm'],
   },
   build: {
