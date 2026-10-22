@@ -40,6 +40,8 @@ jobs:
         run: |
           mkdir -p public/models/wasm
           cp node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm public/models/wasm/
+          # 标准版一对：音素学生模型（src/phoneme-worker.ts，onnxruntime-web/wasm extern 变体）运行时从同目录取
+          cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs public/models/wasm/
           ls -lh public/models/wasm/
       - run: npm run build
       # 热更新（OTA）产物：对比 dist 与 scripts/ota-baseline.json，生成 ota-publish/

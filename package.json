@@ -3,7 +3,8 @@
     "@capacitor/android": "^7.6.9",
     "@capacitor/core": "^7.6.9",
     "@capacitor/filesystem": "7.1.9",
-    "@huggingface/transformers": "^3.7.0"
+    "@huggingface/transformers": "^3.7.0",
+    "onnxruntime-web": "^1.22.0-dev.20250409-89f8206ba4"
   },
   "description": "English pronunciation trainer: play correct pronunciation at 3 speeds, record and score your reading with IPA phoneme feedback. No Google packages.",
   "devDependencies": {

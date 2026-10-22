@@ -20,6 +20,25 @@ export function setIpaType(t: IpaType): void {
   }
 }
 
+// 音素学生模型打分开关（feat/phoneme-onnx-scorer 测试版）：本版默认开，关掉只用 Whisper 打分。
+const PHONEME_SCORER_KEY = 'ept_phoneme_scorer';
+
+export function getPhonemeScorer(): boolean {
+  try {
+    return localStorage.getItem(PHONEME_SCORER_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function setPhonemeScorer(on: boolean): void {
+  try {
+    localStorage.setItem(PHONEME_SCORER_KEY, on ? '1' : '0');
+  } catch {
+    // ignore
+  }
+}
+
 // 释义展开状态：记住用户上次是展开还是收起，默认收起。
 const DEF_OPEN_KEY = 'ept_def_open';
 
