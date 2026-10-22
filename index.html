@@ -90,6 +90,11 @@
       // __EptBundledVersion__ 由 vite.config.ts 在构建时替换为 APK 内置清单版本。
       (function () {
         try {
+          // 先把内置版号挂到 window 上：updater.ts 的 getBundledVersion() 读的是
+          // window.__EptBundledVersion；以前只有下面的局部变量，运行时永远读到空，
+          // 设置页版本显示“—”、过期 OTA 也从不清理（2026-10-22 修复）。
+          // 必须放在 Capacitor 早退之前，网页版也要能读到。
+          window.__EptBundledVersion = '__EptBundledVersion__';
           var cap = window.Capacitor;
           if (!cap || !cap.convertFileSrc) return; // 非 Capacitor（网页版）：直接用内置版
           var files = JSON.parse(localStorage.getItem('ept_ota_files') || '{}');

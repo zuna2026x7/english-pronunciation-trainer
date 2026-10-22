@@ -114,18 +114,28 @@ export async function uploadLogs(audioBlob?: Blob | null): Promise<boolean> {
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
       audio = { base64: btoa(bin), mimeType: audioBlob.type || 'audio/webm' };
     }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        app: 'pronunciation',
-        version: 'offline-4500',
-        ts: Date.now(),
-        deviceInfo: deviceInfo(),
-        logs: entries,
-        ...(audio ? { audio } : {}),
-      }),
-    });
+    // 15 秒超时：以前无超时，网络卡住时 fetch 长时间挂起，按钮像失灵
+    //（清单拉取 fetchManifest 早有 10 秒超时，这里补齐同一防护）。
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app: 'pronunciation',
+          version: 'offline-4500',
+          ts: Date.now(),
+          deviceInfo: deviceInfo(),
+          logs: entries,
+          ...(audio ? { audio } : {}),
+        }),
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     return res.ok;
   } catch {
     return false;

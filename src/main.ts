@@ -211,8 +211,16 @@ async function lookup(word: string) {
     }
     // 后台预热识别模型，评分时更快
     warmupModel((m) => { modelStatus.textContent = m; setState('model', m || 'ready'); });
-    // 音素学生模型预热：只在已下载缓存时加载会话，绝不后台偷跑 122MB 下载
-    if (getPhonemeScorer()) warmupStudentModel();
+    // 音素学生模型预热：只在已下载缓存时加载会话，绝不后台偷跑 122MB 下载。
+    // 结构性防护：预热在查词主流程里同步调用，这里再包一层 try——新打分通道
+    // 任何同步异常都不许冒泡打断查词（其内部本就有 try/catch，这是接缝处的双保险）。
+    if (getPhonemeScorer()) {
+      try {
+        warmupStudentModel();
+      } catch {
+        // 预热失败静默：打分时还有 tryStudentScore 的回落
+      }
+    }
     wordInput.value = info.word;
   } catch (e) {
     lookupStatus.textContent = '没找到，检查拼写。';

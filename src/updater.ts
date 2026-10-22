@@ -34,6 +34,15 @@ const OTA_BASE = 'https://speak.benext.uk/api/updates';
 const OTA_DIR = 'ota';
 const VER_KEY = 'ept_ota_version';
 
+// 【测试构建开关】feat/phoneme-onnx-scorer 专用：彻底禁用热更新通道。
+// 事故（2026-10-22）：本测试包内置版号（旧值 20261017.1）低于线上 OTA 20261018.11，
+// 已应用 OTA 的手机装上测试包后，引导脚本把入口换成旧 OTA 版 JS，而被删的内置
+// <script type="module"> 在 Chromium 里仍会执行——新旧两套 App 同时启动、事件
+// 重复绑定，设置面板点一次被切换两次、永远打不开，整机不可用。
+// 本测试分支：内置版号已提到 20261022.99（高于线上通道），且这里直接关停
+// 检查/应用（手动“检查更新”返回无更新）；正式分支不要带这个开关。
+const OTA_DISABLED = true;
+
 /** 当前已应用的 OTA 版本（localStorage），供词表缓存判断是否过期。 */
 export function getOtaVersion(): string | null {
   try {
@@ -196,6 +205,7 @@ async function fetchManifest(): Promise<OtaManifest | null> {
  * 返回 {manifest} 表示有新版可用（server.version > 当前生效版）。
  */
 export async function checkForUpdate(): Promise<{ manifest: OtaManifest } | null> {
+  if (OTA_DISABLED) return null; // 测试构建：不接受任何热更新
   if (!otaSupported()) return null;
   if (!navigator.onLine) return null;
   const manifest = await fetchManifest();
@@ -273,6 +283,7 @@ export async function applyUpdate(manifest: OtaManifest): Promise<number> {
 
 /** 后台静默检查 + 应用（启动时调用）：失败静默，不打扰用户，不阻塞启动。 */
 export async function autoCheckAndApply(): Promise<void> {
+  if (OTA_DISABLED) return; // 测试构建：启动不自动检查热更新
   try {
     const found = await checkForUpdate();
     if (!found) return;
