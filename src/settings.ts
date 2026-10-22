@@ -61,6 +61,26 @@ export function setServerScorer(on: boolean): void {
   }
 }
 
+// 宽松评分开关：默认开。开 = 教练式计分（近似音给部分信用、多读扣半格，
+// 见 phoneme-decode.ts 的 analyzeLenient）；关 = 严格音素计分（scoreTokens 原样）。
+const LENIENT_SCORE_KEY = 'ept_lenient_score';
+
+export function getLenientScore(): boolean {
+  try {
+    return localStorage.getItem(LENIENT_SCORE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function setLenientScore(on: boolean): void {
+  try {
+    localStorage.setItem(LENIENT_SCORE_KEY, on ? '1' : '0');
+  } catch {
+    // ignore
+  }
+}
+
 // 释义展开状态：记住用户上次是展开还是收起，默认收起。
 const DEF_OPEN_KEY = 'ept_def_open';
 

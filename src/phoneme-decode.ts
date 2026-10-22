@@ -163,3 +163,165 @@ export function scoreTokens(recognized: string[], target: string[]): number {
   const d = levenshtein(recognized, target);
   return Math.max(0, (1 - d / Math.max(target.length, recognized.length)) * 100);
 }
+
+// ---- 宽松评分（lenient，默认开；设置里关掉即回到上面的严格分）----
+//
+// 产品背景：严格分是“考官”——一个音素错就按整格扣，读得能听懂也只有 50–67，
+// 练起来没劲。宽松分是“教练”：用同一条对齐（ipa.ts alignPhonemes 的 ops，与
+// 界面高亮同一条），按每个目标音素拿到的信用算分：
+//   读对 = 1.0；读成近似音（NEAR 表）= 元音 0.6 / 辅音 0.35；读错 = 0；漏读 = 0；
+//   多读一个音素扣 0.5（严格模式下相当于扣满格的一半）。
+// 分数 = (Σ信用 − 插入扣分) / 目标音素数 × 100，下限 0。
+// 参数标定（2026-10-22，用户真实录音，严格 -> 宽松）：
+//   cat [k,ɛ,t] 67->87；cat [b,k,ɛ,t] 50->70；think [s,i,ŋ,k] 50->74；
+//   think [s,ɪ,ŋ,k] 75->84；hello [h,a,l,o] 60->84；hello [a,l,a,o] 20->32（保持低）；
+//   think [k,s,i,m,p]（读砸的）0->11（不虚涨）；标准录音 think/cat 仍是 100。
+// 留出 50 词平均：83.1（严格）-> 86.2（宽松）。
+
+export type ScoreMode = 'strict' | 'lenient';
+
+/** 与 ipa.ts AlignOp 结构相同的最小形状（避免模块循环依赖）。 */
+export interface AlignOpLike {
+  type: 'equal' | 'sub' | 'del' | 'ins';
+  expected?: string;
+  actual?: string;
+}
+
+export const LENIENT_NEAR_VOWEL_CREDIT = 0.6;
+export const LENIENT_NEAR_CONSONANT_CREDIT = 0.35;
+export const LENIENT_INSERTION_COST = 0.5;
+
+/**
+ * 近似音对（无向，recognized ~ target 任一方向都算）。只收语音学上站得住的对：
+ * 元音在共振峰空间里相邻（舌位/唇形只差一档）、辅音是 ESL 学习者最常见的
+ * 系统性替代（齿间擦音被 s/f/d/z 替代、ʃ 与 s/tʃ 混、ŋ 尾鼻音弱化成 n 等）。
+ * 拿不准的宁可不收——宽松的是态度，不是把错读成对。
+ */
+const NEAR_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  // 元音
+  ['æ', 'ɛ'], // cat 的 æ 读偏成 ɛ（舌位略高）
+  ['ɪ', 'i'], // 短 ɪ 与长 i 只差松紧/时长，解码端两符号都出现，必须算近似
+  ['ʊ', 'u'], // 同上，短 ʊ 与长 u
+  ['ɒ', 'ɔ'], // 圆唇后元音的松紧差异
+  ['ɑ', 'ɔ'], // 同上：目标 ɒ 在归一化后写作 ɑ，识别端出 ɔ 时是同一处混淆
+  ['ə', 'ɜ'], // 中央元音邻居
+  ['e', 'ɛ'], // 解码符号 e 与目标 ɛ 本就同指一个音位的不同写法
+  ['ɑ', 'a'], // 开后元音与开前元音的符号/舌位差异
+  ['a', 'ə'], // 非重读元音弱化方向（hello 的 /hə-/ 读成 [ha]）：弱化不到位但可懂
+  // 辅音
+  ['θ', 's'], // th 清音最常见的替代
+  ['θ', 'f'], // th 清音的唇齿替代
+  ['ð', 'd'], // th 浊音的塞音化
+  ['ð', 'z'], // th 浊音的擦音替代
+  ['ʃ', 's'], // ʃ 读平舌
+  ['tʃ', 'ʃ'], // 破擦音弱化成擦音
+  ['ŋ', 'n'], // 尾鼻音前移
+  ['v', 'w'], // 唇齿擦音与唇软腭近音混淆
+  ['z', 's'], // 清浊对立未分化
+  ['ʒ', 'ʃ'], // 清浊对立未分化（擦音版）
+  ['r', 'ɹ'], // 同一个音的符号变体
+  ['ɡ', 'g'], // 手写体 ɡ 与 ASCII g 的符号变体（归一化后一般遇不到，留作兜底）
+];
+
+const NEAR_SET = new Set<string>();
+for (const [a, b] of NEAR_PAIRS) {
+  NEAR_SET.add(`${a}|${b}`);
+  NEAR_SET.add(`${b}|${a}`);
+}
+
+/** a 与 b 是否互为近似音（对称）。 */
+export function isNearPhoneme(a: string, b: string): boolean {
+  return a !== b && NEAR_SET.has(`${a}|${b}`);
+}
+
+const VOWEL_TOKENS = new Set([
+  'a', 'æ', 'ɛ', 'ɪ', 'i', 'ʊ', 'u', 'ɒ', 'ɔ', 'ɑ', 'ə', 'ɜ', 'e', 'o', 'ʌ',
+]);
+
+/**
+ * 双元音在词元空间里是相邻两词元（见 phoneme-vocab 的 DIPH_EXPAND 与
+ * normalizeTargetTokens 的切分）：[首元素, 尾元素]。
+ */
+const DIPHTHONG_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ['a', 'ɪ'], // aɪ
+  ['a', 'ʊ'], // aʊ
+  ['e', 'ɪ'], // eɪ
+  ['o', 'ɪ'], // oɪ
+  ['ɔ', 'ɪ'], // ɔɪ
+  ['o', 'ʊ'], // oʊ
+  ['ə', 'ʊ'], // əʊ
+  ['ɑ', 'ʊ'], // ɑu
+];
+
+function isDiphthongTail(first: string, second: string): boolean {
+  return DIPHTHONG_PAIRS.some(([a, b]) => a === first && b === second);
+}
+
+export interface LenientAnalysis {
+  /** 宽松分（0–100 浮点，调用方按需取整）。 */
+  score: number;
+  /** 与 ops 等长：该 op 是否按“接近”计分（渲染用琥珀色）。 */
+  near: boolean[];
+}
+
+/**
+ * 在既有对齐上算宽松分。ops 必须来自 alignPhonemes(target, recognized)
+ * （与界面渲染同一条对齐，保证分数与高亮永远一致）。
+ * 双元音简化也算近似：目标是双元音、只读出首元素（尾元素落在 del op，
+ * 且紧跟在首元素的对齐之后）时，尾元素按元音近似信用计；反过来目标是
+ * 单元音、读成双元音（尾元素落在 ins op）时，只扣近似与全额的差。
+ */
+export function analyzeLenient(
+  ops: readonly AlignOpLike[],
+  targetLen: number,
+): LenientAnalysis {
+  const near = ops.map(() => false);
+  let credit = 0;
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i];
+    if (op.type === 'equal') {
+      credit += 1;
+      continue;
+    }
+    if (op.type === 'sub') {
+      if (op.expected && op.actual && isNearPhoneme(op.expected, op.actual)) {
+        credit += VOWEL_TOKENS.has(op.expected)
+          ? LENIENT_NEAR_VOWEL_CREDIT
+          : LENIENT_NEAR_CONSONANT_CREDIT;
+        near[i] = true;
+      }
+      continue;
+    }
+    if (op.type === 'del') {
+      const prev = ops[i - 1];
+      if (
+        prev &&
+        (prev.type === 'equal' || prev.type === 'sub') &&
+        prev.expected &&
+        op.expected &&
+        isDiphthongTail(prev.expected, op.expected)
+      ) {
+        credit += LENIENT_NEAR_VOWEL_CREDIT;
+        near[i] = true;
+      }
+      continue;
+    }
+    // ins：多读的音素
+    const prev = ops[i - 1];
+    if (
+      prev &&
+      prev.type === 'equal' &&
+      prev.actual &&
+      op.actual &&
+      isDiphthongTail(prev.actual, op.actual)
+    ) {
+      credit -= 1 - LENIENT_NEAR_VOWEL_CREDIT;
+      near[i] = true;
+    } else {
+      credit -= LENIENT_INSERTION_COST;
+    }
+  }
+  const score =
+    targetLen > 0 ? Math.max(0, Math.min(100, (credit / targetLen) * 100)) : 0;
+  return { score, near };
+}

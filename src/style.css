@@ -118,6 +118,11 @@ body{background:#f6f7fb}
 .grade{font-size:22px;margin:0}
 .grade[data-level=great]{color:#16a34a}.grade[data-level=good]{color:#2563eb}.grade[data-level=ok]{color:#d97706}.grade[data-level=low]{color:#dc2626}
 .grade-sub{margin:4px 0 0;font-size:14px;color:#475569}
+.encourage-label{margin:0 0 2px;font-size:13px;font-weight:600;letter-spacing:.04em;color:#16a34a}
+.encourage-label[data-level=good]{color:#2563eb}
+.encourage-label[data-level=ok]{color:#d97706}
+.encourage-label[data-level=low]{color:#64748b}
+.encourage-label[hidden]{display:none}
 .recog{margin:8px 0 0;font-size:14px;color:#475569}
 .recog strong{color:#0f172a}
 .result{border-top:0;margin-top:4px;padding-top:4px}
@@ -128,6 +133,7 @@ body{background:#f6f7fb}
 .phonemes span{min-width:44px;height:44px;padding:0 10px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;background:#f1f5f9}
 .phonemes span.ok{background:#dcfce7;color:#14532d}
 .phonemes span.bad{background:#fee2e2;color:#7f1d1d}
+.phonemes span.near{background:#fef3c7;color:#92400e}
 .errors{list-style:none;padding:0;color:#92400e}
 .errors li.all-ok{color:#16a34a}
 #recStatus:empty,#modelStatus:empty{display:none}

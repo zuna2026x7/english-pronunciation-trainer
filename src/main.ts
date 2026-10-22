@@ -3,11 +3,11 @@ import { playAtRate, SPEEDS } from './audio';
 import { Recorder, blobToPCM16k, pcmPeak } from './recorder';
 import { scoreWithStudent, warmupStudentModel, probeStudentReady } from './phoneme-scorer';
 import { scoreWithServer } from './server-scorer';
-import { normalizeTargetTokens, scoreTokens } from './phoneme-decode';
+import { normalizeTargetTokens, scoreTokens, analyzeLenient, type ScoreMode } from './phoneme-decode';
 import { alignPhonemes, gradeForScore, describeOp } from './ipa';
 import { lookupLocal, speakTTS, reportMissingWord } from './offline';
 import { initLogger, log, setState, uploadLogs } from './logger';
-import { getIpaType, setIpaType, getPhonemeScorer, setPhonemeScorer, getServerScorer, setServerScorer } from './settings';
+import { getIpaType, setIpaType, getPhonemeScorer, setPhonemeScorer, getServerScorer, setServerScorer, getLenientScore, setLenientScore } from './settings';
 import { autoCheckAndApply, checkForUpdate, applyUpdate, getCurrentVersion, otaSupported } from './updater';
 import { ensureLayout, showDefModal, setReplayIcon, setAccentLabel, setAudioAccentLabel, setScoreRing, setGrade } from './ui';
 import { normalizeIPA } from './ipa';
@@ -503,6 +503,52 @@ function renderServerScorerButtons(): void {
   offBtn.classList.toggle('selected', !enabled);
 }
 
+// 宽松评分开关行：动态创建（理由同上）。默认开；关掉 = 严格音素计分。
+function ensureLenientScorerRow(): void {
+  if (document.getElementById('lenientScorerRow')) return;
+  const row = document.createElement('div');
+  row.className = 'settings-row';
+  row.id = 'lenientScorerRow';
+  const label = document.createElement('span');
+  label.className = 'settings-label';
+  label.textContent = '宽松评分';
+  const seg = document.createElement('div');
+  seg.className = 'seg';
+  const onBtn = document.createElement('button');
+  onBtn.id = 'lenientOnBtn';
+  onBtn.className = 'btn seg-btn';
+  onBtn.textContent = '开';
+  const offBtn = document.createElement('button');
+  offBtn.id = 'lenientOffBtn';
+  offBtn.className = 'btn seg-btn';
+  offBtn.textContent = '关';
+  onBtn.addEventListener('click', () => {
+    setLenientScore(true);
+    renderLenientScorerButtons();
+  });
+  offBtn.addEventListener('click', () => {
+    setLenientScore(false);
+    renderLenientScorerButtons();
+  });
+  seg.append(onBtn, offBtn);
+  row.append(label, seg);
+  const logRow = settingsLogBtn.closest('.settings-row');
+  if (logRow && logRow.parentElement === settingsCard) {
+    settingsCard.insertBefore(row, logRow);
+  } else {
+    settingsCard.appendChild(row);
+  }
+}
+
+function renderLenientScorerButtons(): void {
+  const onBtn = document.getElementById('lenientOnBtn');
+  const offBtn = document.getElementById('lenientOffBtn');
+  if (!onBtn || !offBtn) return;
+  const enabled = getLenientScore();
+  onBtn.classList.toggle('selected', enabled);
+  offBtn.classList.toggle('selected', !enabled);
+}
+
 // 遮罩：JS 动态创建，不依赖 index.html（index.html 不热更新；OTA 只推 JS/CSS，
 // 若 JS 引用了 HTML 里不存在的元素，$('...') 返回 null，设置就弹不出来）。
 // 动态创建保证 OTA 补丁自包含。
@@ -535,6 +581,8 @@ settingsBtn.addEventListener('click', (e) => {
     renderPhonemeScorerButtons();
     ensureServerScorerRow();
     renderServerScorerButtons();
+    ensureLenientScorerRow();
+    renderLenientScorerButtons();
     renderVersion();
   }
 });
@@ -621,46 +669,87 @@ playMineBtn.addEventListener('click', async () => {
   } catch (e) { recStatus.textContent = '回放失败。'; }
 });
 
+/** 鼓励小标签（英文，与界面音标同为英文层）：动态创建在评级文字上方，
+ *  只在宽松模式显示；严格模式保持原样不出现。元素只创建一次、只改文本与显隐，
+ *  不改变分数区块的既有布局。 */
+function setEncouragement(score: number, mode: ScoreMode): void {
+  let el = document.getElementById('encourageLabel') as HTMLElement | null;
+  if (!el) {
+    const grade = document.getElementById('gradeText');
+    if (!grade || !grade.parentElement) return;
+    el = document.createElement('p');
+    el.id = 'encourageLabel';
+    el.className = 'encourage-label';
+    grade.parentElement.insertBefore(el, grade);
+  }
+  if (mode !== 'lenient') {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.textContent =
+    score >= 85 ? 'Great' : score >= 70 ? 'Good' : score >= 50 ? 'OK' : 'Try again';
+  el.dataset.level =
+    score >= 85 ? 'great' : score >= 70 ? 'good' : score >= 50 ? 'ok' : 'low';
+}
+
 /** 音素打分渲染（本地学生模型 / 服务器共用）：tokens 为识别到的音素（评估词元
  *  空间），expectedTokens 为目标词元。算分与对齐都走本地同一套逻辑，保证同一
- *  录音在两种通道下渲染与分数完全一致。返回界面分数（取整）。 */
-function renderPhonemeScore(tokens: string[], expectedTokens: string[]): number {
+ *  录音在两种通道下渲染与分数完全一致。返回界面分数（取整）与所用模式。
+ *  宽松模式（默认）：analyzeLenient 在同一条对齐上按信用算分，近似音渲染为
+ *  琥珀色“接近”态；严格模式：scoreTokens 与高亮和此前完全一致。 */
+function renderPhonemeScore(
+  tokens: string[],
+  expectedTokens: string[],
+): { score: number; mode: ScoreMode } {
+  const mode: ScoreMode = getLenientScore() ? 'lenient' : 'strict';
   const { ops } = alignPhonemes(expectedTokens, tokens);
-  const score = Math.round(scoreTokens(tokens, expectedTokens));
+  let score: number;
+  let nearFlags: boolean[] | null = null;
+  if (mode === 'lenient') {
+    const a = analyzeLenient(ops, expectedTokens.length);
+    score = Math.round(a.score);
+    nearFlags = a.near;
+  } else {
+    score = Math.round(scoreTokens(tokens, expectedTokens));
+  }
   recognizedText.textContent = `/${tokens.join(' ')}/`;
   fallbackNote.hidden = true;
   // 渲染音素对比
   const expHtml: string[] = [];
   const userHtml: string[] = [];
   const errs: string[] = [];
-  for (const op of ops) {
+  ops.forEach((op, idx) => {
+    const near = !!nearFlags?.[idx];
     if (op.type === 'equal') {
       expHtml.push(`<span class="ok">${op.expected}</span>`);
       userHtml.push(`<span class="ok">${op.actual}</span>`);
     } else if (op.type === 'sub') {
-      expHtml.push(`<span class="bad">${op.expected}</span>`);
-      userHtml.push(`<span class="bad">${op.actual}</span>`);
+      const cls = near ? 'near' : 'bad';
+      expHtml.push(`<span class="${cls}">${op.expected}</span>`);
+      userHtml.push(`<span class="${cls}">${op.actual}</span>`);
       const d = describeOp(op);
       if (d) errs.push(d);
     } else if (op.type === 'del') {
-      expHtml.push(`<span class="bad">${op.expected}</span>`);
+      expHtml.push(`<span class="${near ? 'near' : 'bad'}">${op.expected}</span>`);
       const d = describeOp(op);
       if (d) errs.push(d);
     } else if (op.type === 'ins') {
-      userHtml.push(`<span class="extra">${op.actual}</span>`);
+      userHtml.push(`<span class="${near ? 'near' : 'extra'}">${op.actual}</span>`);
       const d = describeOp(op);
       if (d) errs.push(d);
     }
-  }
+  });
   expectedPhonemes.innerHTML = expHtml.join('');
   userPhonemes.innerHTML = userHtml.join('');
   errorList.innerHTML = errs.length ? errs.map((e) => `<li>${e}</li>`).join('') : '<li class="all-ok">全部正确</li>';
   setScoreRing(score);
   setGrade(gradeForScore(score));
+  setEncouragement(score, mode);
   resultEl.hidden = false;
   recStatus.textContent = '';
   modelStatus.textContent = '';
-  return score;
+  return { score, mode };
 }
 
 /** 目标词元：把当前显示音标（本地词包 p 字段即 ECDICT 写法）归一化到评估词元空间，
@@ -685,10 +774,10 @@ async function tryStudentScore(pcm: Float32Array): Promise<boolean> {
       log('log', `student scorer: 解码为空 (loadMs=${r.loadMs} inferMs=${r.inferMs})，跳过`);
       return false;
     }
-    const score = renderPhonemeScore(r.tokens, expectedTokens);
+    const { score, mode } = renderPhonemeScore(r.tokens, expectedTokens);
     log(
       'log',
-      `score: source=student word=${current.word} score=${score} loadMs=${r.loadMs} inferMs=${r.inferMs} phonemes=${r.tokens.join(' ')}`,
+      `score: source=student word=${current.word} score=${score} mode=${mode} loadMs=${r.loadMs} inferMs=${r.inferMs} phonemes=${r.tokens.join(' ')}`,
     );
     setState('scorer', 'student');
     return true;
@@ -714,10 +803,10 @@ async function tryServerScore(blob: Blob): Promise<boolean> {
       log('log', `server scorer: 解码为空 (totalMs=${r.totalMs} serverMs=${r.serverMs})，回落本地`);
       return false;
     }
-    const score = renderPhonemeScore(r.tokens, expectedTokens);
+    const { score, mode } = renderPhonemeScore(r.tokens, expectedTokens);
     log(
       'log',
-      `score: source=server word=${current.word} score=${score} totalMs=${r.totalMs} serverMs=${r.serverMs} phonemes=${r.tokens.join(' ')}`,
+      `score: source=server word=${current.word} score=${score} mode=${mode} totalMs=${r.totalMs} serverMs=${r.serverMs} phonemes=${r.tokens.join(' ')}`,
     );
     setState('scorer', 'server');
     return true;
